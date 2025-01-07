@@ -1,0 +1,12 @@
+[package]
+name = "private_approximate_nearest_neighbor_counting"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand_distr = "0.4.3"
+rand = "0.8.5"
+savefile = "0.18.5"
+savefile-derive = "0.18.5"
