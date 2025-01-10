@@ -8,5 +8,5 @@ edition = "2021"
 [dependencies]
 rand_distr = "0.4.3"
 rand = "0.8.5"
-savefile = "0.18.5"
-savefile-derive = "0.18.5"
+savefile = "0.18"
+savefile-derive = "0.18"
