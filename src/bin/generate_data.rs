@@ -50,6 +50,14 @@ fn generate_gaussian_vectors(n: usize, d: usize, sigma: f64) -> std::io::Result<
         vectors.push(vector);
     }
 
+    // Step 3: Normalize the vectors to have unit length
+    for vector in &mut vectors {
+        let magnitude: f64 = vector.iter().map(|x| x * x).sum::<f64>().sqrt();
+        for value in vector {
+            *value /= magnitude;
+        }
+    }
+
     // Return the generated vectors
     Ok(vectors)
 }
