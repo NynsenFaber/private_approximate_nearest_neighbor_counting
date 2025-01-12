@@ -2,17 +2,9 @@ use rand::distributions::Distribution;
 use rand_distr::Normal;
 use std::io::{Error, ErrorKind};
 
-/// COmputes the dot product of two vectors.
-pub fn dot_product(vec1: &[f64], vec2: &[f64]) -> f64 {
+/// Computes the dot product of two vectors.
+pub fn get_dot_product(vec1: &[f64], vec2: &[f64]) -> f64 {
     vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum()
-}
-
-/// Computes the cosine similarity between two vectors.
-pub fn cosine_similarity(vec1: &[f64], vec2: &[f64]) -> f64 {
-    let dot_product: f64 = dot_product(vec1, vec2);
-    let magnitude1: f64 = vec1.iter().map(|x| x * x).sum::<f64>().sqrt();
-    let magnitude2: f64 = vec2.iter().map(|x| x * x).sum::<f64>().sqrt();
-    dot_product / (magnitude1 * magnitude2)
 }
 
 /// Generates N random Gaussian vectors with zero mean and variance sigma^2.
@@ -34,8 +26,6 @@ pub fn generate_gaussian_vectors(n: usize, d: usize) -> std::io::Result<Vec<Vec<
     Ok(vectors)
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -46,17 +36,8 @@ mod tests {
     fn test_dot_product() {
         let vec1 = vec![1.0, 2.0, 3.0];
         let vec2 = vec![4.0, 5.0, 6.0];
-        let result = dot_product(&vec1, &vec2);
+        let result = get_dot_product(&vec1, &vec2);
         assert_eq!(result, 32.0);
-    }
-
-    /// Test function to check if the cosine similarity function works.
-    #[test]
-    fn test_cosine_similarity() {
-        let vec1 = vec![1.0, 2.0, 3.0];
-        let vec2 = vec![4.0, 5.0, 6.0];
-        let result = cosine_similarity(&vec1, &vec2);
-        assert_eq!(result, 0.9746318461970762);
     }
 
     /// Test function to check if the generate_gaussian_vectors function works.
@@ -70,4 +51,3 @@ mod tests {
         assert_eq!(vectors[0].len(), d);
     }
 }
-

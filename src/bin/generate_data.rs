@@ -11,7 +11,7 @@ struct GaussianVectors {
 
 fn main() -> std::io::Result<()> {
     let n = 100; // Number of vectors
-    let d = 100; // Dimension of each vector
+    let d = 10; // Dimension of each vector
     let sigma = 1.0; // Standard deviation (sqrt of variance)
 
     // Define the folder and file name

@@ -1,15 +1,13 @@
 mod top_1;
 mod utils;
 
-use rand::distributions::Distribution;
-use rand_distr::num_traits::Pow;
 use savefile::prelude::*;
 use savefile_derive::Savefile;
 use std::io::{Error, ErrorKind};
 
 // Load cosine_similarity function from utils.rs
 use crate::top_1::Top1;
-use utils::generate_gaussian_vectors;
+use utils::{generate_gaussian_vectors, get_dot_product};
 
 #[derive(Savefile)]
 struct GaussianVectors {
@@ -18,9 +16,9 @@ struct GaussianVectors {
 
 fn main() {
     let n = 100; // Number of vectors
-    let d = 10; // Dimension of each vector
+    let d = 100; // Dimension of each vector
     let alpha: f64 = 0.9; // close point according to cosine similarity
-    let beta: f64 = 0.5; // far point according to cosine similarity
+    let beta: f64 = 0.55; // far point according to cosine similarity
 
     // Load file
     let file_name = format!("data/dimension_{}/sample_{}.bin", d, n);
@@ -47,10 +45,11 @@ fn main() {
     let top1 = Top1::new(data, alpha, beta, theta);
 
     // Query the Top1 struct
-    let result = top1.query(query);
+    let result = top1.query(&query);
     match result {
         Some(close_point) => {
-            println!("Close point found: {:?}", close_point);
+            let dot_product = get_dot_product(&query, &close_point);
+            println!("Close point found with dot_product: {:?}", dot_product);
         }
         None => {
             println!("No close point found.");
