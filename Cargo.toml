@@ -1,9 +1,8 @@
 [package]
-name = "private_approximate_nearest_neighbor_counting"
+name = "ann_rust"
 version = "0.1.0"
+authors = ["Fabrizio Boninsegna"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 rand_distr = "0.4.3"

@@ -1,13 +1,10 @@
-mod top_1;
-mod utils;
-
 use savefile::prelude::*;
 use savefile_derive::Savefile;
-use std::io::{Error, ErrorKind};
+use std::io;
 
 // Load cosine_similarity function from utils.rs
-use crate::top_1::Top1;
-use utils::{generate_gaussian_vectors, get_dot_product};
+use ann_rust::top1::Top1;
+use ann_rust::utils::{generate_normal_gaussian_vectors, get_dot_product};
 
 #[derive(Savefile)]
 struct GaussianVectors {
@@ -34,7 +31,7 @@ fn main() {
         }
         Err(e) => {
             eprintln!("Failed to load vectors: {}. Generating new vectors...", e);
-            let vectors = generate_gaussian_vectors(n, d).unwrap();
+            let vectors = generate_normal_gaussian_vectors(n, d).unwrap();
             vectors
         }
     };
@@ -47,17 +44,20 @@ fn main() {
     // Query the Top1 struct
     let result = top1.query(&query);
     match result {
-        Some(close_point) => {
+        Ok(Some(close_point)) => {
             let dot_product = get_dot_product(&query, &close_point);
             println!("Close point found with dot_product: {:?}", dot_product);
         }
-        None => {
+        Ok(None) => {
             println!("No close point found.");
+        }
+        Err(err) => {
+            eprintln!("Error: {:?}", err);
         }
     }
 }
 
-fn load_vectors(file_name: &str) -> std::io::Result<GaussianVectors> {
+fn load_vectors(file_name: &str) -> io::Result<GaussianVectors> {
     load_file(file_name, 0)
-        .map_err(|e| Error::new(ErrorKind::NotFound, format!("Failed to load file: {}", e)))
+        .map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("Failed to load file: {}", e)))
 }

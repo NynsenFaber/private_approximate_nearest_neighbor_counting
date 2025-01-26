@@ -1,6 +1,7 @@
-use crate::utils::{get_dot_product, generate_gaussian_vectors};
+use crate::utils::{get_dot_product, generate_normal_gaussian_vectors, query, get_threshold};
 use rand_distr::num_traits::Pow;
 use std::collections::HashMap;
+use std::io;
 
 pub struct Top1 {
     pub gaussian_vectors: Vec<Vec<f64>>,
@@ -26,7 +27,7 @@ impl Top1 {
 
         // Generate Gaussian vectors
         println!("Generating {} Gaussian vectors...", m);
-        let gaussian_vectors = generate_gaussian_vectors(m, d).unwrap();
+        let gaussian_vectors = generate_normal_gaussian_vectors(m, d).unwrap();
 
         // Create hash table
         println!("Creating hash table...");
@@ -43,56 +44,10 @@ impl Top1 {
         }
     }
 
-    /// Given a query `q`, return all the indices of the Gaussian vectors with dot product
-    /// greater than or equal to the threshold.
-    fn search(&self, q: &Vec<f64>) -> Vec<usize> {
-        let mut result = Vec::new();
-        for (i, gaussian_vector) in self.gaussian_vectors.iter().enumerate() {
-            if get_dot_product(&q, gaussian_vector) >= self.threshold {
-                result.push(i);
-            }
-        }
-        result
-    }
-
     /// Given a query `q`, return a close point according to dot product.
-    pub fn query(&self, q: &Vec<f64>) -> Option<Vec<f64>> {
-        // Check if query is normalized
-        let norm = q.iter().map(|x| x * x).sum::<f64>();
-        if (norm - 1.0).abs() > 1e-6 {
-            eprintln!("Query vector is not normalized (norm = {}).", norm);
-            return None;
-        }
-
-        // Get indices of Gaussian vectors that meet the threshold
-        let indices = self.search(q);
-
-        // If no vectors meet the threshold, return None
-        if indices.is_empty() {
-            return None;
-        }
-
-        // Search in the hash table for a close vector with dot product greater than `beta`
-        for i in indices {
-            if let Some(vectors) = self.hash_table.get(&i) {
-                for vector in vectors {
-                    if get_dot_product(q, vector) >= self.beta {
-                        return Some(vector.clone());
-                    }
-                }
-            }
-        }
-
-        // If no vector meets the `beta` threshold, return None
-        None
+    pub fn query(&self, q: &Vec<f64>) -> Result<Option<Vec<f64>>, io::Error> {
+        query(&self.gaussian_vectors, q, self.threshold, &self.hash_table, self.beta)
     }
-}
-
-fn get_threshold(alpha: f64, m: usize) -> f64 {
-    let first_term = alpha * (2. * (m as f64).ln()).sqrt();
-    let second_term = -(2. * (1. - alpha.powi(2)) * ((m as f64).ln()).ln()).sqrt();
-    let threshold = first_term + second_term;
-    threshold
 }
 
 /// For each vector in `data`, find the Gaussian vector with the highest dot product.
@@ -189,20 +144,6 @@ fn check_input(data: &Vec<Vec<f64>>, alpha: f64, beta: f64, theta: f64) -> Resul
 mod tests {
     use super::*;
 
-    pub fn check_result(result: Option<&Vec<f64>>, query: &Vec<f64>, beta: f64) -> bool {
-        match result {
-            Some(close_point) => {
-                let dot_product = get_dot_product(&close_point, &query);
-                if dot_product >= beta {
-                    true
-                } else {
-                    false
-                }
-            }
-            None => false,
-        }
-    }
-
     /// Test function to check if the Top1 struct works.
     #[test]
     fn test_top1_query() {
@@ -220,21 +161,31 @@ mod tests {
         // Good query
         let query = vec![1.0, 0.0, 0.0];
         let result = top1.query(&query);
-        assert!(check_result(result.as_ref(), &query, beta));
+        // if threshold is lower than all the dot products, the result should be None
+        let mut flag: bool = true;
+        for vector in top1.gaussian_vectors.iter() {
+            let dot_product = get_dot_product(&query, vector);
+            // A vector has a dot product greater than the threshold, so the result should not be None
+            if dot_product >= top1.threshold {
+                println!("Dot product: {}", dot_product);
+                flag = false;
+                break;
+            }
+        }
+        if flag {
+            // Result should be None
+            assert_eq!(result.unwrap(), None);
+        } else {
+            // Result should be close to the query
+            let dot_product = get_dot_product(&query, &result.unwrap().unwrap());
+            assert!(dot_product >= beta);
+        }
 
         // Bad query
         let query = vec![2.0, 0.0, 0.0];
         let result = top1.query(&query);
-        assert!(!check_result(result.as_ref(), &query, beta));
-    }
-
-    /// Test function to check if the get_threshold function works.
-    #[test]
-    fn test_get_threshold() {
-        let alpha = 0.9;
-        let m = 100;
-        let threshold = get_threshold(alpha, m);
-        assert!(threshold > 0.0);
+        // Result should be an Error
+        assert!(result.is_err());
     }
 
     /// Test function to check if the get_hash_table function works.
@@ -263,33 +214,5 @@ mod tests {
         assert_eq!(hash_table[&0][1], vec![1.0, 0.0, 0.0]);
         assert_eq!(hash_table[&1][0], vec![0.0, 1.0, 0.0]);
         assert_eq!(hash_table[&2][0], vec![0.0, 0.0, 1.0]);
-    }
-
-    /// Test function to check if search function works.
-    #[test]
-    fn test_search() {
-        let data = vec![
-            vec![1.0, 0.0, 0.0],
-            vec![0.0, 1.0, 0.0],
-            vec![0.0, 0.0, 1.0],
-        ];
-        let alpha = 0.9;
-        let beta = 0.8;
-        let theta = 0.5;
-        let top1 = Top1::new(data, alpha, beta, theta);
-
-        let query = vec![1.0, 2.0, 3.0];
-        let indices = top1.search(&query);
-
-        // Get all Gaussian vector indices that meet the threshold
-        let matched_gaussian_indices: Vec<usize> = top1.gaussian_vectors
-            .iter()
-            .enumerate()
-            .filter(|(_, gaussian_vector)| get_dot_product(&query, gaussian_vector) >= top1.threshold)
-            .map(|(i, _)| i)
-            .collect();
-
-        // Ensure that the indices returned by `search` match the expected indices
-        assert_eq!(indices, matched_gaussian_indices);
     }
 }

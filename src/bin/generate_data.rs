@@ -1,8 +1,9 @@
-use rand_distr::{Distribution, Normal};
 use savefile::prelude::*; // For save_file
 use savefile_derive::Savefile; // For #[derive(Savefile)]
 use std::fs::create_dir_all;
 use std::io::{Error, ErrorKind}; // Import only Error and ErrorKind
+
+use ann_rust::utils::generate_normal_gaussian_vectors; // Import generate_gaussian_vectors
 
 #[derive(Savefile)] // Derive Savefile for serialization
 struct GaussianVectors {
@@ -12,14 +13,13 @@ struct GaussianVectors {
 fn main() -> std::io::Result<()> {
     let n = 100; // Number of vectors
     let d = 10; // Dimension of each vector
-    let sigma = 1.0; // Standard deviation (sqrt of variance)
 
     // Define the folder and file name
     let folder_name = format!("data/dimension_{}", d);
     let file_name = format!("{}/sample_{}.bin", folder_name, n);
 
     // Generate the Gaussian vectors
-    let vectors = generate_gaussian_vectors(n, d, sigma)?;
+    let vectors = generate_normal_gaussian_vectors(n, d).unwrap();
 
     // Wrap vectors in a struct for serialization
     let data = GaussianVectors { vectors };
@@ -33,33 +33,6 @@ fn main() -> std::io::Result<()> {
     println!("Vectors successfully saved to {}", file_name);
 
     Ok(())
-}
-
-/// Generates N random Gaussian vectors with zero mean and variance sigma^2.
-fn generate_gaussian_vectors(n: usize, d: usize, sigma: f64) -> std::io::Result<Vec<Vec<f64>>> {
-    // Step 1: Define the normal distribution with mean 0 and standard deviation sigma
-    let normal = Normal::new(0.0, sigma)
-        .map_err(|_| Error::new(ErrorKind::InvalidInput, "Invalid standard deviation"))?;
-
-    // Step 2: Generate N random Gaussian vectors of dimension d
-    let mut vectors = Vec::with_capacity(n);
-    for _ in 0..n {
-        let vector: Vec<f64> = (0..d)
-            .map(|_| normal.sample(&mut rand::thread_rng()))
-            .collect();
-        vectors.push(vector);
-    }
-
-    // Step 3: Normalize the vectors to have unit length
-    for vector in &mut vectors {
-        let magnitude: f64 = vector.iter().map(|x| x * x).sum::<f64>().sqrt();
-        for value in vector {
-            *value /= magnitude;
-        }
-    }
-
-    // Return the generated vectors
-    Ok(vectors)
 }
 
 /// Save the Gaussian vectors to a binary file.
