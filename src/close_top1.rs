@@ -1,9 +1,10 @@
-use crate::utils::{get_dot_product, generate_normal_gaussian_vectors, query, get_threshold};
 use rand_distr::num_traits::Pow;
 use std::collections::HashMap;
 use std::io;
+use crate::top1::check_input;
+use crate::utils::{generate_normal_gaussian_vectors, get_dot_product, get_threshold, query};
 
-pub struct Top1 {
+pub struct CloseTop1 {
     pub gaussian_vectors: Vec<Vec<f64>>,
     pub hash_table: HashMap<usize, Vec<Vec<f64>>>,
     pub alpha: f64,
@@ -12,12 +13,12 @@ pub struct Top1 {
     pub m: usize,
 }
 
-impl Top1 {
+impl CloseTop1 {
     /// Constructor for the Top1 struct.
     pub fn new(data: Vec<Vec<f64>>, alpha: f64, beta: f64, theta: f64) -> Self {
         // Check inputs
         match check_input(&data, alpha, beta, theta) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(err) => eprintln!("Input validation failed: {}", err),
         }
 
@@ -34,7 +35,7 @@ impl Top1 {
         let hash_table = get_hash_table(&data, &gaussian_vectors);
 
         // Create Top1 struct
-        Top1 {
+        CloseTop1 {
             gaussian_vectors,
             hash_table,
             alpha,
@@ -46,7 +47,13 @@ impl Top1 {
 
     /// Given a query `q`, return a close point according to dot product.
     pub fn query(&self, q: &Vec<f64>) -> Result<Option<Vec<f64>>, io::Error> {
-        query(&self.gaussian_vectors, q, self.threshold, &self.hash_table, self.beta)
+        query(
+            &self.gaussian_vectors,
+            q,
+            self.threshold,
+            &self.hash_table,
+            self.beta,
+        )
     }
 }
 
@@ -59,83 +66,32 @@ fn get_hash_table(
 ) -> HashMap<usize, Vec<Vec<f64>>> {
     let mut closest_gaussian_vectors: HashMap<usize, Vec<Vec<f64>>> = HashMap::new();
 
+    let m = gaussian_vectors.len() as f64;
+    let ln_m = m.ln();
+    let left_bound = (2. * ln_m).sqrt() - (3./2.) * (ln_m.ln()/(2. * ln_m).sqrt());
+    let right_bound = (2. * ln_m).sqrt();
+
     // Iterate over each data vector
     for data_vector in data.iter() {
-        let mut max_dot_product = f64::MIN;
-        let mut max_dot_product_index = 0;
 
         // Iterate over each Gaussian vector
-        for (j, gaussian_vector) in gaussian_vectors.iter().enumerate() {
+        for (i, gaussian_vector) in gaussian_vectors.iter().enumerate() {
             // Compute dot product between the data vector and this Gaussian vector
             let dot_product_value = get_dot_product(data_vector, gaussian_vector);
 
-            if dot_product_value > max_dot_product {
-                max_dot_product = dot_product_value;
-                max_dot_product_index = j;
+            if (dot_product_value >= left_bound) && (dot_product_value <= right_bound) {
+                // Insert or update the list of data vectors for the closest Gaussian vector
+                closest_gaussian_vectors
+                    .entry(i)
+                    .or_insert_with(Vec::new)
+                    .push(data_vector.clone());
+                break;
             }
         }
 
-        // Insert or update the list of data vectors for the closest Gaussian vector
-        closest_gaussian_vectors
-            .entry(max_dot_product_index)
-            .or_insert_with(Vec::new)
-            .push(data_vector.clone());
     }
 
     closest_gaussian_vectors
-}
-
-/// Check if the input data is valid.
-pub(crate) fn check_input(data: &Vec<Vec<f64>>, alpha: f64, beta: f64, theta: f64) -> Result<(), String> {
-    // Validate alpha
-    if !(0.0 < alpha && alpha < 1.0) {
-        return Err("Invalid value for alpha. Alpha must be in the range (0, 1).".to_string());
-    }
-
-    // Validate beta
-    if !(0.0 < beta && beta < alpha) {
-        return Err("Invalid value for beta. Beta must be in the range (0, alpha).".to_string());
-    }
-
-    // Validate theta
-    if !(theta > 0.0) {
-        return Err("Invalid value for theta. Theta must be positive.".to_string());
-    }
-
-    // Validate data is non-empty
-    if data.is_empty() {
-        return Err("Data cannot be empty.".to_string());
-    }
-
-    // Check if all vectors have the same dimension and are normalized
-    let d = data[0].len(); // Dimension of the first vector
-    if d == 0 {
-        return Err("Vectors cannot have zero dimensions.".to_string());
-    }
-
-    for (i, vector) in data.iter().enumerate() {
-        // Check if all vectors have the same dimension
-        if vector.len() != d {
-            return Err(format!(
-                "Vector at index {} has a different dimension (expected {}, got {}).",
-                i,
-                d,
-                vector.len()
-            ));
-        }
-
-        // Check if the vector is normalized (sum of squares equals 1)
-        let norm = vector.iter().map(|x| x * x).sum::<f64>();
-        if (norm - 1.0).abs() > 1e-6 {
-            return Err(format!(
-                "Vector at index {} is not normalized (norm = {}).",
-                i,
-                norm
-            ));
-        }
-    }
-
-    Ok(())
 }
 
 
@@ -146,7 +102,7 @@ mod tests {
 
     /// Test function to check if the Top1 struct works.
     #[test]
-    fn test_top1_query() {
+    fn test_close_top1_query() {
         // Create a sample data
         let data = vec![
             vec![1.0, 0.0, 0.0],
@@ -156,7 +112,7 @@ mod tests {
         let alpha = 0.9;
         let beta = 0.8;
         let theta = 0.5;
-        let top1 = Top1::new(data, alpha, beta, theta);
+        let top1 = CloseTop1::new(data, alpha, beta, theta);
 
         // Good query
         let query = vec![1.0, 0.0, 0.0];
@@ -190,7 +146,7 @@ mod tests {
 
     /// Test function to check if the get_hash_table function works.
     #[test]
-    fn test_get_hash_table() {
+    fn test_close_top_1_get_hash_table() {
         let data = vec![
             vec![1.0, 0.0, 0.0],
             vec![1.0, 0.0, 0.0],
@@ -204,15 +160,44 @@ mod tests {
         ];
         let hash_table = get_hash_table(&data, &gaussian_vectors);
 
-        // Check if the hash table is correct
-        assert_eq!(hash_table.len(), 3);
-        assert_eq!(hash_table[&0].len(), 2);
-        assert_eq!(hash_table[&1].len(), 1);
-        assert_eq!(hash_table[&2].len(), 1);
-        // Check if the hash table contains the correct data
-        assert_eq!(hash_table[&0][0], vec![1.0, 0.0, 0.0]);
-        assert_eq!(hash_table[&0][1], vec![1.0, 0.0, 0.0]);
-        assert_eq!(hash_table[&1][0], vec![0.0, 1.0, 0.0]);
-        assert_eq!(hash_table[&2][0], vec![0.0, 0.0, 1.0]);
+        // Count how many vectors are in the hash table
+        let mut count_hash = 0;
+        for (_, vectors) in hash_table.iter() {
+            count_hash += vectors.len();
+        }
+
+        let m = gaussian_vectors.len() as f64;
+        let ln_m = m.ln();
+        let left_bound = (2. * ln_m).sqrt() - (3./2.) * (ln_m.ln()/(2. * ln_m).sqrt());
+        let right_bound = (2. * ln_m).sqrt();
+
+        // Compute how many data passes the filter
+        let mut count_data = 0;
+        let mut data_index: Vec<usize> = Vec::new();
+        for (i, data_vector) in data.iter().enumerate() {
+            for gaussian_vector in gaussian_vectors.iter() {
+                let dot_product_value = get_dot_product(data_vector, gaussian_vector);
+                if (dot_product_value >= left_bound) && (dot_product_value <= right_bound) {
+                    count_data += 1;
+                    data_index.push(i);
+                    break;
+                }
+            }
+        }
+        assert_eq!(count_hash, count_data);
+
+        // Check if all the data vectors who passed the filter are in the hash table
+        for i in data_index.iter() {
+            let mut flag = false;
+            for (_, vectors) in hash_table.iter() {
+                for vector in vectors.iter() {
+                    if data[*i] == *vector {
+                        flag = true;
+                        break;
+                    }
+                }
+            }
+            assert!(flag);
+        }
     }
 }
