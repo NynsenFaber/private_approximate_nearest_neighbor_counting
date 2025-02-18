@@ -4,7 +4,7 @@ use std::io;
 
 // Load cosine_similarity function from utils.rs
 use ann_rust::simple_data_structures::top1::Top1;
-use ann_rust::utils::{generate_normal_gaussian_vectors, get_dot_product};
+use ann_rust::utils::{generate_normal_gaussian_vectors, dot_product};
 
 #[derive(Savefile)]
 struct GaussianVectors {
@@ -45,7 +45,7 @@ fn main() {
     let result = top1.query(&query);
     match result {
         Ok(Some(close_point)) => {
-            let dot_product = get_dot_product(&query, &close_point);
+            let dot_product = dot_product(&query, &close_point);
             println!("Close point found with dot_product: {:?}", dot_product);
         }
         Ok(None) => {

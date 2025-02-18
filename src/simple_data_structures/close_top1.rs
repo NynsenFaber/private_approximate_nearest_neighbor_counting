@@ -1,4 +1,4 @@
-use crate::utils::{generate_normal_gaussian_vectors, get_dot_product, get_threshold};
+use crate::utils::{generate_normal_gaussian_vectors, dot_product, get_threshold};
 use crate::checks::check_input;
 use super::query::query;
 use rand_distr::num_traits::Pow;
@@ -79,7 +79,7 @@ fn get_hash_table(
         // Iterate over each Gaussian vector
         for (i, gaussian_vector) in gaussian_vectors.iter().enumerate() {
             // Compute dot product between the data vector and this Gaussian vector
-            let dot_product_value = get_dot_product(data_vector, gaussian_vector);
+            let dot_product_value = dot_product(data_vector, gaussian_vector);
 
             if (dot_product_value >= left_bound) && (dot_product_value <= right_bound) {
                 // Insert or update the list of data vectors for the closest Gaussian vector
@@ -122,7 +122,7 @@ mod tests {
         // if threshold is lower than all the dot products, the result should be None
         let mut flag: bool = true;
         for vector in top1.gaussian_vectors.iter() {
-            let dot_product = get_dot_product(&query, vector);
+            let dot_product = dot_product(&query, vector);
             // A vector has a dot product greater than the threshold, so the result should not be None
             if dot_product >= top1.threshold {
                 println!("Dot product: {}", dot_product);
@@ -135,7 +135,7 @@ mod tests {
             assert_eq!(result.unwrap(), None);
         } else {
             // Result should be close to the query
-            let dot_product = get_dot_product(&query, &result.unwrap().unwrap());
+            let dot_product = dot_product(&query, &result.unwrap().unwrap());
             assert!(dot_product >= beta);
         }
 
@@ -178,7 +178,7 @@ mod tests {
         let mut data_index: Vec<usize> = Vec::new();
         for (i, data_vector) in data.iter().enumerate() {
             for gaussian_vector in gaussian_vectors.iter() {
-                let dot_product_value = get_dot_product(data_vector, gaussian_vector);
+                let dot_product_value = dot_product(data_vector, gaussian_vector);
                 if (dot_product_value >= left_bound) && (dot_product_value <= right_bound) {
                     count_data += 1;
                     data_index.push(i);

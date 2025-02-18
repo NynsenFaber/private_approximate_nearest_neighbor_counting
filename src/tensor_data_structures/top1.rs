@@ -1,11 +1,13 @@
-use crate::utils::{generate_normal_gaussian_vectors, get_dot_product, get_threshold};
+use crate::utils::{generate_normal_gaussian_vectors, dot_product, get_threshold};
+use crate::checks::check_input;
 use rand_distr::num_traits::Pow;
-use std::collections::HashMap;
-use std::io;
 
 pub struct Top1 {
+    // Random Gaussian vectors
     pub gaussian_vectors: Vec<Vec<f64>>,
-    pub hash_table: HashMap<usize, Vec<Vec<f64>>>,
+    // Vector of length n with the indices of the closest Gaussian vector
+    pub match_list: Vec<usize>,
+    // threshold
     pub threshold: f64,
 }
 
@@ -31,63 +33,104 @@ impl Top1 {
 
         // Create hash table
         println!("Creating hash table...");
-        let hash_table = get_hash_table(&data, &gaussian_vectors);
+        let match_list = get_match_list(&data, &gaussian_vectors);
 
         // Create Top1 struct
         Top1 {
             gaussian_vectors,
-            hash_table,
-            alpha,
-            beta,
-            m,
+            match_list,
             threshold: get_threshold(alpha, m),
         }
     }
 
-    /// Given an index (a number from 0 to n-1) indicating a point of the dataset, return
-    /// the hash table entry for that point.
-    pub fn get_hash(&self, index: usize) -> Option<&Vec<Vec<f64>> {
-        self.hash_table.get(&index)
+    /// Given a `query`, return all the indices of the Gaussian vectors with dot product
+    /// greater than or equal to the `threshold`.
+    pub fn search(
+        gaussian_vectors: &[Vec<f64>],
+        query: &[f64],
+        threshold: f64,
+    ) -> Option<Vec<usize>> {
+        let result: Vec<usize> = gaussian_vectors
+            .iter()
+            .enumerate()
+            .filter_map(|(i, gaussian_vector)| {
+                if dot_product(query, gaussian_vector) >= threshold {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if result.is_empty() {
+            None
+        } else {
+            Some(result)
+        }
     }
 }
 
 /// For each vector in `data`, find the Gaussian vector with the highest dot product.
-/// Store the result in a `HashMap` where the key is the index of the Gaussian vector and
-/// the value is the list of data vectors that are closest to it.
-fn get_hash_table(
+/// Store the indices of the closest Gaussian vector in a Vec<usize>.
+fn get_match_list(
     data: &Vec<Vec<f64>>,
     gaussian_vectors: &Vec<Vec<f64>>,
-) -> HashMap<usize, Vec<Vec<f64>>> {
-    let mut closest_gaussian_vectors: HashMap<usize, Vec<Vec<f64>>> = HashMap::new();
+) -> Vec<usize> {
+    let mut match_list: Vec<usize> = Vec::new();
 
     // Iterate over each data vector
-    for data_vector in data.iter() {
+    for point in data.iter() {
         let mut max_dot_product = f64::MIN;
         let mut max_dot_product_index = 0;
-
         // Iterate over each Gaussian vector
         for (j, gaussian_vector) in gaussian_vectors.iter().enumerate() {
             // Compute dot product between the data vector and this Gaussian vector
-            let dot_product_value = get_dot_product(data_vector, gaussian_vector);
-
+            let dot_product_value = dot_product(point, gaussian_vector);
+            // Update the maximum dot product and the index of the closest Gaussian vector
             if dot_product_value > max_dot_product {
                 max_dot_product = dot_product_value;
                 max_dot_product_index = j;
             }
         }
-
-        // Insert or update the list of data vectors for the closest Gaussian vector
-        closest_gaussian_vectors
-            .entry(max_dot_product_index)
-            .or_insert_with(Vec::new)
-            .push(data_vector.clone());
+        // Store the index of the closest Gaussian vector
+        match_list.push(max_dot_product_index);
     }
-
-    closest_gaussian_vectors
+    match_list
 }
 
 /// Test function for Top1 struct.
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // test match_list
+    #[test]
+    fn test_match_list() {
+        let data = vec![vec![1.0, 0., 0.], vec![0., 1.0, 0.]];
+        let gaussian_vectors = vec![vec![1.0, 0., 0.], vec![0.5, 0.5, 0.]];
+        let match_list = get_match_list(&data, &gaussian_vectors);
+        assert_eq!(match_list, vec![0, 1]);
+    }
+
+    // test search
+    #[test]
+    fn test_search() {
+        let gaussian_vectors = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let query = vec![1.0, 2.0, 3.0];
+        let threshold = 20.0;
+        let result = Top1::search(&gaussian_vectors, &query, threshold);
+        assert_eq!(result, Some(vec![1]));
+
+        let gaussian_vectors = vec![vec![1.0, 0., 0.], vec![0., 1.0, 0.]];
+        let query = vec![1.0, 0.5, 0.];
+        let threshold = 0.5;
+        let result = Top1::search(&gaussian_vectors, &query, threshold);
+        assert_eq!(result, Some(vec![0, 1]));
+
+        let gaussian_vectors = vec![vec![1.0, 0., 0.], vec![0., 1.0, 0.]];
+        let query = vec![1.0, 0.5, 0.];
+        let threshold = 2.0;
+        let result = Top1::search(&gaussian_vectors, &query, threshold);
+        assert_eq!(result, None);
+    }
 }

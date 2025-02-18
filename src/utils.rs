@@ -3,7 +3,7 @@ use rand_distr::Normal;
 use std::io;
 
 /// Computes the dot product of two vectors.
-pub fn get_dot_product(vec1: &[f64], vec2: &[f64]) -> f64 {
+pub fn dot_product(vec1: &[f64], vec2: &[f64]) -> f64 {
     vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum()
 }
 
@@ -30,6 +30,14 @@ pub fn generate_normal_gaussian_vectors(n: usize, d: usize) -> Result<Vec<Vec<f6
     Ok(vectors)
 }
 
+/// Normalizes a vector to have unit length.
+pub fn normalize_vector(vector: &mut Vec<f64>) {
+    let norm: f64 = vector.iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
+    for i in 0..vector.len() {
+        vector[i] /= norm;
+    }
+}
+
 pub fn get_threshold(alpha: f64, m: usize) -> f64 {
     let first_term = alpha * (2. * (m as f64).ln()).sqrt();
     let second_term = -(2. * (1. - alpha.powi(2)) * ((m as f64).ln()).ln()).sqrt();
@@ -48,8 +56,13 @@ mod tests {
     fn test_dot_product() {
         let vec1 = vec![1.0, 2.0, 3.0];
         let vec2 = vec![4.0, 5.0, 6.0];
-        let result = get_dot_product(&vec1, &vec2);
+        let result = dot_product(&vec1, &vec2);
         assert_eq!(result, 32.0);
+
+        let vec1 = vec![0.5, 0.5, 0.];
+        let vec2 = vec![0.5, 0.5, 0.];
+        let result = dot_product(&vec1, &vec2);
+        assert_eq!(result, 0.5);
     }
 
     /// Test function to check if the generate_gaussian_vectors function works.
@@ -61,5 +74,19 @@ mod tests {
         let vectors = generate_normal_gaussian_vectors(n, d).unwrap();
         assert_eq!(vectors.len(), n);
         assert_eq!(vectors[0].len(), d);
+    }
+
+    /// Test function to check if the normalize_vector function works.
+    #[test]
+    fn test_normalize_vector() {
+        let mut vector = vec![1.0, 2.0, 3.0];
+        normalize_vector(&mut vector);
+        let norm: f64 = vector.iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
+        assert!((norm - 1.0).abs() <= 1e-6);
+
+        let mut vector = vec![0.5, 0.5, 0.];
+        normalize_vector(&mut vector);
+        let norm: f64 = vector.iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
+        assert!((norm - 1.0).abs() <= 1e-6);
     }
 }

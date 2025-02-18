@@ -1,4 +1,4 @@
-use crate::utils::get_dot_product;
+use crate::utils::dot_product;
 use std::collections::HashMap;
 use std::io;
 
@@ -46,7 +46,7 @@ fn is_normalized(vector: &Vec<f64>) -> bool {
 /// Helper function to find a close vector in a list of vectors.
 fn find_close_vector(query: &Vec<f64>, vectors: &Vec<Vec<f64>>, beta: f64) -> Option<Vec<f64>> {
     for vector in vectors {
-        if get_dot_product(query, vector) >= beta {
+        if dot_product(query, vector) >= beta {
             return Some(vector.clone());
         }
     }
@@ -62,7 +62,7 @@ fn search(
 ) -> Option<Vec<usize>> {
     let mut result = Vec::new();
     for (i, gaussian_vector) in gaussian_vectors.iter().enumerate() {
-        if get_dot_product(query, gaussian_vector) >= threshold {
+        if dot_product(query, gaussian_vector) >= threshold {
             result.push(i);
         }
     }
@@ -97,7 +97,7 @@ mod tests {
         let matched_gaussian_indices: Vec<usize> = gaussian_vectors
             .iter()
             .enumerate()
-            .filter(|(_, gaussian_vector)| get_dot_product(&query, gaussian_vector) >= threshold)
+            .filter(|(_, gaussian_vector)| dot_product(&query, gaussian_vector) >= threshold)
             .map(|(i, _)| i)
             .collect();
 
