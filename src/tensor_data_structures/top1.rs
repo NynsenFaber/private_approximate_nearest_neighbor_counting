@@ -45,57 +45,60 @@ impl Top1 {
 
     /// Given a `query`, return all the indices of the Gaussian vectors with dot product
     /// greater than or equal to the `threshold`.
-    pub fn search(
-        gaussian_vectors: &[Vec<f64>],
-        query: &[f64],
-        threshold: f64,
-    ) -> Option<Vec<usize>> {
-        let result: Vec<usize> = gaussian_vectors
-            .iter()
-            .enumerate()
-            .filter_map(|(i, gaussian_vector)| {
-                if dot_product(query, gaussian_vector) >= threshold {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
-            .collect();
+    pub fn search(self, query: &Vec<f64>) -> Option<Vec<usize>> {
+        search(&self.gaussian_vectors, query, self.threshold)
+    }
+}
 
-        if result.is_empty() {
-            None
-        } else {
-            Some(result)
-        }
+/// Given a `query`, return all the indices of the Gaussian vectors with dot product
+/// greater than or equal to the `threshold`.
+fn search(
+    gaussian_vectors: &[Vec<f64>],
+    query: &Vec<f64>,
+    threshold: f64,
+) -> Option<Vec<usize>> {
+    let result: Vec<usize> = gaussian_vectors
+        .iter()
+        .enumerate()
+        .filter_map(|(i, gaussian_vector)| {
+            if dot_product(query, gaussian_vector) >= threshold {
+                Some(i)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
     }
 }
 
 /// For each vector in `data`, find the Gaussian vector with the highest dot product.
 /// Store the indices of the closest Gaussian vector in a Vec<usize>.
+/// For each vector in `data`, find the Gaussian vector with the highest dot product.
+/// Store the indices of the closest Gaussian vector in a Vec<usize>.
 fn get_match_list(
-    data: &Vec<Vec<f64>>,
-    gaussian_vectors: &Vec<Vec<f64>>,
+    data: &Vec<Vec<f64>>, // Input data vectors
+    gaussian_vectors: &Vec<Vec<f64>>, // Gaussian vectors
 ) -> Vec<usize> {
-    let mut match_list: Vec<usize> = Vec::new();
-
-    // Iterate over each data vector
-    for point in data.iter() {
-        let mut max_dot_product = f64::MIN;
-        let mut max_dot_product_index = 0;
+    // Iterate over each data point
+    data.iter().map(|point| {
         // Iterate over each Gaussian vector
-        for (j, gaussian_vector) in gaussian_vectors.iter().enumerate() {
-            // Compute dot product between the data vector and this Gaussian vector
-            let dot_product_value = dot_product(point, gaussian_vector);
-            // Update the maximum dot product and the index of the closest Gaussian vector
-            if dot_product_value > max_dot_product {
-                max_dot_product = dot_product_value;
-                max_dot_product_index = j;
-            }
-        }
-        // Store the index of the closest Gaussian vector
-        match_list.push(max_dot_product_index);
-    }
-    match_list
+        gaussian_vectors.iter()
+            // Enumerate to get index and vector
+            .enumerate()
+            // Calculate dot product and pair with index
+            .map(|(j, gaussian_vector)| (j, dot_product(point, gaussian_vector)))
+            // Find the Gaussian vector with the highest dot product
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            // Extract the index of the closest Gaussian vector
+            .map(|(index, _)| index)
+            // Default to index 0 if no maximum found (A maximum is always found)
+            .unwrap_or(0)
+    }).collect() // Collect indices into a Vec<usize>
 }
 
 /// Test function for Top1 struct.
@@ -118,19 +121,19 @@ mod tests {
         let gaussian_vectors = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
         let query = vec![1.0, 2.0, 3.0];
         let threshold = 20.0;
-        let result = Top1::search(&gaussian_vectors, &query, threshold);
+        let result = search(&gaussian_vectors, &query, threshold);
         assert_eq!(result, Some(vec![1]));
 
         let gaussian_vectors = vec![vec![1.0, 0., 0.], vec![0., 1.0, 0.]];
         let query = vec![1.0, 0.5, 0.];
         let threshold = 0.5;
-        let result = Top1::search(&gaussian_vectors, &query, threshold);
+        let result = search(&gaussian_vectors, &query, threshold);
         assert_eq!(result, Some(vec![0, 1]));
 
         let gaussian_vectors = vec![vec![1.0, 0., 0.], vec![0., 1.0, 0.]];
         let query = vec![1.0, 0.5, 0.];
         let threshold = 2.0;
-        let result = Top1::search(&gaussian_vectors, &query, threshold);
+        let result = search(&gaussian_vectors, &query, threshold);
         assert_eq!(result, None);
     }
 }
