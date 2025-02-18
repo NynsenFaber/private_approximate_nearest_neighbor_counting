@@ -3,7 +3,7 @@ use savefile_derive::Savefile;
 use std::io;
 
 // Load cosine_similarity function from utils.rs
-use ann_rust::top1::Top1;
+use ann_rust::simple_data_structures::top1::Top1;
 use ann_rust::utils::{generate_normal_gaussian_vectors, get_dot_product};
 
 #[derive(Savefile)]

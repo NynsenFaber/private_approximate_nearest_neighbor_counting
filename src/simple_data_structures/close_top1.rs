@@ -1,8 +1,10 @@
+use crate::utils::{generate_normal_gaussian_vectors, get_dot_product, get_threshold};
+use crate::checks::check_input;
+use super::query::query;
 use rand_distr::num_traits::Pow;
 use std::collections::HashMap;
 use std::io;
-use crate::top1::check_input;
-use crate::utils::{generate_normal_gaussian_vectors, get_dot_product, get_threshold, query};
+
 
 pub struct CloseTop1 {
     pub gaussian_vectors: Vec<Vec<f64>>,
