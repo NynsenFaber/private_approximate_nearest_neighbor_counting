@@ -28,11 +28,9 @@ impl Top1 {
         let m = (n as f64).pow(theta / (1. - alpha.powf(2.))).ceil() as usize;
 
         // Generate Gaussian vectors
-        println!("Generating {} Gaussian vectors...", m);
         let gaussian_vectors = generate_normal_gaussian_vectors(m, d).unwrap();
 
         // Create hash table
-        println!("Creating hash table...");
         let match_list = get_match_list(&data, &gaussian_vectors);
 
         // Create Top1 struct

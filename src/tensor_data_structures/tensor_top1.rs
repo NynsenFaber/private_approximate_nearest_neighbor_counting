@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use std::hash::Hash;
 use super::top1::Top1;
-use rand_distr::num_traits::Float;
+use super::query::query;
+use std::collections::HashMap;
+use std::io;
 
 pub struct TensorTop1 {
     pub top1_list: Vec<Top1>,
-    pub hash_table: HashMap<usize, Vec<Vec<f64>>>,
+    pub hash_table: HashMap<String, Vec<Vec<f64>>>,
     pub alpha: f64,
     pub beta: f64,
     pub threshold: f64,
@@ -38,6 +38,14 @@ impl TensorTop1 {
             threshold,
         }
     }
+
+    pub fn query(&self, q: &Vec<f64>) -> Result<Option<Vec<f64>>, io::Error> {
+        println!("Querying the TensorTop1 structure");
+        query(q,
+              &self.top1_list,
+              &self.hash_table,
+              self.beta)
+    }
 }
 
 fn get_hash_table(
@@ -52,7 +60,7 @@ fn get_hash_table(
         let mut hash: String = String::new();
         // Get the hashes of each data structure and concatenate them
         for top1 in top1_list.iter() {
-            hash += top1.hash(i);
+            hash += &top1.hash(i);
         }
         // Insert the point in the Hash Table
         hash_table

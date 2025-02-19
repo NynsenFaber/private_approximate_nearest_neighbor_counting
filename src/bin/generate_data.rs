@@ -3,7 +3,7 @@ use savefile_derive::Savefile; // For #[derive(Savefile)]
 use std::fs::create_dir_all;
 use std::io::{Error, ErrorKind}; // Import only Error and ErrorKind
 
-use ann_rust::utils::generate_normal_gaussian_vectors; // Import generate_gaussian_vectors
+use ann_rust::utils::{generate_normal_gaussian_vectors, normalize_vector}; // Import generate_gaussian_vectors
 
 #[derive(Savefile)] // Derive Savefile for serialization
 struct GaussianVectors {
@@ -11,15 +11,20 @@ struct GaussianVectors {
 }
 
 fn main() -> std::io::Result<()> {
-    let n = 100; // Number of vectors
-    let d = 10; // Dimension of each vector
+    let n = 1000; // Number of vectors
+    let d = 10000; // Dimension of each vector
 
     // Define the folder and file name
     let folder_name = format!("data/dimension_{}", d);
     let file_name = format!("{}/sample_{}.bin", folder_name, n);
 
     // Generate the Gaussian vectors
-    let vectors = generate_normal_gaussian_vectors(n, d).unwrap();
+    let mut vectors = generate_normal_gaussian_vectors(n, d).unwrap();
+
+    // Normalize the vectors
+    for vector in vectors.iter_mut() {
+        normalize_vector(vector);
+    }
 
     // Wrap vectors in a struct for serialization
     let data = GaussianVectors { vectors };

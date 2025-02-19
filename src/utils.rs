@@ -30,12 +30,28 @@ pub fn generate_normal_gaussian_vectors(n: usize, d: usize) -> Result<Vec<Vec<f6
     Ok(vectors)
 }
 
+/// Helper function to check if a vector is normalized.
+pub fn is_normalized(vector: &Vec<f64>) -> bool {
+    let norm = vector.iter().map(|x| x * x).sum::<f64>();
+    (norm - 1.0).abs() <= 1e-6
+}
+
 /// Normalizes a vector to have unit length.
 pub fn normalize_vector(vector: &mut Vec<f64>) {
     let norm: f64 = vector.iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
     for i in 0..vector.len() {
         vector[i] /= norm;
     }
+}
+
+/// Helper function to find a close vector in a list of vectors.
+pub fn find_close_vector(query: &Vec<f64>, vectors: &Vec<Vec<f64>>, beta: f64) -> Option<Vec<f64>> {
+    for vector in vectors {
+        if dot_product(query, vector) >= beta {
+            return Some(vector.clone());
+        }
+    }
+    None
 }
 
 pub fn get_threshold(alpha: f64, m: usize) -> f64 {

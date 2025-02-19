@@ -1,4 +1,4 @@
-use crate::utils::dot_product;
+use crate::utils::{dot_product, is_normalized, find_close_vector};
 use std::collections::HashMap;
 use std::io;
 
@@ -35,22 +35,6 @@ pub fn query(
     if cfg!(test) {println!("No close vector found.");}
     // If no vector meets the `beta` threshold, return None
     Ok(None)
-}
-
-/// Helper function to check if a vector is normalized.
-fn is_normalized(vector: &Vec<f64>) -> bool {
-    let norm = vector.iter().map(|x| x * x).sum::<f64>();
-    (norm - 1.0).abs() <= 1e-6
-}
-
-/// Helper function to find a close vector in a list of vectors.
-fn find_close_vector(query: &Vec<f64>, vectors: &Vec<Vec<f64>>, beta: f64) -> Option<Vec<f64>> {
-    for vector in vectors {
-        if dot_product(query, vector) >= beta {
-            return Some(vector.clone());
-        }
-    }
-    None
 }
 
 /// Given a `query`, return all the indices of the Gaussian vectors with dot product

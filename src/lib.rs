@@ -9,4 +9,6 @@ pub mod simple_data_structures {
 
 pub mod tensor_data_structures {
     pub mod top1;
+    pub mod tensor_top1;
+    pub mod query;
 }
