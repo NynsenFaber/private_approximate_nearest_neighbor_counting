@@ -44,9 +44,14 @@ impl Top1 {
     }
 
     /// Given a `query`, return all the indices of the Gaussian vectors with dot product
-    /// greater than or equal to the `threshold`.
-    pub fn search(self, query: &Vec<f64>) -> Option<Vec<usize>> {
+    /// greater than or equal to the `threshold`. The output is encoded as Vec<String>.
+    pub fn search(&self, query: &Vec<f64>) -> Option<Vec<String>> {
         search(&self.gaussian_vectors, query, self.threshold)
+    }
+
+    /// Given a number from 0 to n-1, return a hash, which is the index of the closest Gaussian vector.
+    pub fn hash(&self, i: usize) -> String {
+        format!("{}#", self.match_list[i])
     }
 }
 
@@ -56,13 +61,13 @@ fn search(
     gaussian_vectors: &[Vec<f64>],
     query: &Vec<f64>,
     threshold: f64,
-) -> Option<Vec<usize>> {
-    let result: Vec<usize> = gaussian_vectors
+) -> Option<Vec<String>> {
+    let result: Vec<String> = gaussian_vectors
         .iter()
         .enumerate()
         .filter_map(|(i, gaussian_vector)| {
             if dot_product(query, gaussian_vector) >= threshold {
-                Some(i)
+                Some(format!("{}#", i))
             } else {
                 None
             }
@@ -76,8 +81,6 @@ fn search(
     }
 }
 
-/// For each vector in `data`, find the Gaussian vector with the highest dot product.
-/// Store the indices of the closest Gaussian vector in a Vec<usize>.
 /// For each vector in `data`, find the Gaussian vector with the highest dot product.
 /// Store the indices of the closest Gaussian vector in a Vec<usize>.
 fn get_match_list(
@@ -122,13 +125,13 @@ mod tests {
         let query = vec![1.0, 2.0, 3.0];
         let threshold = 20.0;
         let result = search(&gaussian_vectors, &query, threshold);
-        assert_eq!(result, Some(vec![1]));
+        assert_eq!(result, Some(vec![String::from("1#")]));
 
         let gaussian_vectors = vec![vec![1.0, 0., 0.], vec![0., 1.0, 0.]];
         let query = vec![1.0, 0.5, 0.];
         let threshold = 0.5;
         let result = search(&gaussian_vectors, &query, threshold);
-        assert_eq!(result, Some(vec![0, 1]));
+        assert_eq!(result, Some(vec![String::from("0#"), String::from("1#")]));
 
         let gaussian_vectors = vec![vec![1.0, 0., 0.], vec![0., 1.0, 0.]];
         let query = vec![1.0, 0.5, 0.];

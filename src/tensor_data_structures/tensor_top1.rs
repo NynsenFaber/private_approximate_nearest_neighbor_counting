@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::hash::Hash;
 use super::top1::Top1;
 use rand_distr::num_traits::Float;
 
 pub struct TensorTop1 {
-    pub top1_structures: Vec<Top1>,
+    pub top1_list: Vec<Top1>,
     pub hash_table: HashMap<usize, Vec<Vec<f64>>>,
     pub alpha: f64,
     pub beta: f64,
@@ -19,19 +20,46 @@ impl TensorTop1 {
         // Update theta
         let theta = theta / (t as f64);
         //// Store t Top1 structures
-        let mut top1_structures = Vec::new();
+        let mut top1_list = Vec::new();
         for i in 0..t {
             println!("Creating Top1 structure {}/{}", i, t);
             let top1 = Top1::new(data.clone(), alpha, beta, theta);
-            top1_structures.push(top1);
+            top1_list.push(top1);
         }
+        println!("Creating the Hash Table");
+        let hash_table = get_hash_table(&data, &top1_list);
         // All the thresholds are the same, so we can just use the first one
-        let threshold = top1_structures[0].threshold;
+        let threshold = top1_list[0].threshold;
         TensorTop1 {
-            top1_structures,
+            top1_list,
+            hash_table,
             alpha,
             beta,
             threshold,
         }
     }
+}
+
+fn get_hash_table(
+    data: &Vec<Vec<f64>>,
+    top1_list: &Vec<Top1>,
+) -> HashMap<String, Vec<Vec<f64>>> {
+    // Initialize the Hash Table
+    let mut hash_table: HashMap<String, Vec<Vec<f64>>> = HashMap::new();
+
+    // Iterate over each data vector
+    for (i, point) in data.iter().enumerate() {
+        let mut hash: String = String::new();
+        // Get the hashes of each data structure and concatenate them
+        for top1 in top1_list.iter() {
+            hash += top1.hash(i);
+        }
+        // Insert the point in the Hash Table
+        hash_table
+            .entry(hash)
+            .or_insert_with(Vec::new)
+            .push(point.clone())
+    }
+
+    hash_table
 }
