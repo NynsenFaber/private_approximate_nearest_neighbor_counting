@@ -4,3 +4,6 @@ This project aims to implement the algorithms in the paper *Aumüller, Martin, F
 
 The project is still under development.
 
+## Running the mechanism
+The folder 'src/bin' contains runnable scripts to run the mechanisms. Last update 
+**tensor_top1.rs**
