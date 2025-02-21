@@ -12,7 +12,7 @@ struct GaussianVectors {
 }
 
 fn main() {
-    let n = 100000; // Number of vectors
+    let n = 1_000_000; // Number of vectors
     let d = 100; // Dimension of each vector
     let alpha: f64 = 0.9; // close point according to cosine similarity
     let beta: f64 = 0.55; // far point according to cosine similarity

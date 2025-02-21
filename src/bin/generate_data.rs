@@ -2,6 +2,7 @@ use savefile::prelude::*; // For save_file
 use savefile_derive::Savefile; // For #[derive(Savefile)]
 use std::fs::create_dir_all;
 use std::io::{Error, ErrorKind}; // Import only Error and ErrorKind
+use rayon::prelude::*;
 
 use ann_rust::utils::{generate_normal_gaussian_vectors_parallel, normalize_vector}; // Import generate_gaussian_vectors
 
@@ -11,7 +12,7 @@ struct GaussianVectors {
 }
 
 fn main() -> std::io::Result<()> {
-    let n = 1_000_000; // Number of vectors
+    let n = 10_000_000; // Number of vectors
     let d = 100; // Dimension of each vector
 
     // Define the folder and file name
@@ -24,9 +25,9 @@ fn main() -> std::io::Result<()> {
 
     println!("Normalizing the vectors...");
     // Normalize the vectors
-    for vector in vectors.iter_mut() {
+    vectors.par_iter_mut().for_each(|vector| {
         normalize_vector(vector);
-    }
+    });
 
     // Wrap vectors in a struct for serialization
     let data = GaussianVectors { vectors };
