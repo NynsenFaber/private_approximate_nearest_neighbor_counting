@@ -1,6 +1,7 @@
 use rand::distributions::Distribution;
 use rand_distr::Normal;
 use std::io;
+use rayon::prelude::*;
 
 /// Computes the dot product of two vectors.
 pub fn dot_product(vec1: &[f64], vec2: &[f64]) -> f64 {
@@ -25,6 +26,29 @@ pub fn generate_normal_gaussian_vectors(n: usize, d: usize) -> Result<Vec<Vec<f6
             .collect();
         vectors.push(vector);
     }
+
+    // Return the generated vectors
+    Ok(vectors)
+}
+
+/// Generates n random Normal Gaussian vectors of dimension d.
+pub fn generate_normal_gaussian_vectors_parallel(n: usize, d: usize) -> Result<Vec<Vec<f64>>, io::Error> {
+    // Step 1: Define the normal distribution with mean 0 and standard deviation sigma
+    let normal = Normal::new(0.0, 1.0).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Failed to create normal distribution: {}", e),
+        )
+    })?;
+
+    // Step 2: Generate N random Gaussian vectors of dimension d in parallel
+    let vectors: Vec<Vec<f64>> = (0..n).into_par_iter()
+        .map(|_| {
+            (0..d)
+                .map(|_| normal.sample(&mut rand::thread_rng()))
+                .collect()
+        })
+        .collect();
 
     // Return the generated vectors
     Ok(vectors)
