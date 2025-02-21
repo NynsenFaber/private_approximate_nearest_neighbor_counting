@@ -55,8 +55,10 @@ pub fn find_close_vector(query: &Vec<f64>, vectors: &Vec<Vec<f64>>, beta: f64) -
 }
 
 pub fn get_threshold(alpha: f64, m: usize) -> f64 {
-    let first_term = alpha * (2. * (m as f64).ln()).sqrt();
-    let second_term = -(2. * (1. - alpha.powi(2)) * ((m as f64).ln()).ln()).sqrt();
+    let ln_m = (m as f64).ln();
+    let ln_ln_m = ln_m.ln();
+    let first_term = alpha * (2. * ln_m).sqrt();
+    let second_term = -(2. * (1. - alpha.powi(2)) * ln_ln_m).sqrt();
     let threshold = first_term + second_term;
     threshold
 }

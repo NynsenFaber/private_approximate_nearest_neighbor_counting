@@ -12,7 +12,7 @@ struct GaussianVectors {
 }
 
 fn main() {
-    let n = 1000; // Number of vectors
+    let n = 10000; // Number of vectors
     let d = 10000; // Dimension of each vector
     let alpha: f64 = 0.9; // close point according to cosine similarity
     let beta: f64 = 0.55; // far point according to cosine similarity
@@ -38,7 +38,9 @@ fn main() {
 
     // Create Top1 struct
     let theta = (1. - alpha.powi(2)) * (1. - beta.powi(2)) / (1. - alpha * beta).powi(2);
+    // Get first vector to query
     let query = data[0].clone();
+    // Create TensorTop1 struct
     let tensor_top1 = TensorTop1::new(data, alpha, beta, theta);
 
     // Query the Top1 struct

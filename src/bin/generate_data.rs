@@ -11,7 +11,7 @@ struct GaussianVectors {
 }
 
 fn main() -> std::io::Result<()> {
-    let n = 1000; // Number of vectors
+    let n = 10000; // Number of vectors
     let d = 10000; // Dimension of each vector
 
     // Define the folder and file name
@@ -19,8 +19,10 @@ fn main() -> std::io::Result<()> {
     let file_name = format!("{}/sample_{}.bin", folder_name, n);
 
     // Generate the Gaussian vectors
+    println!("Generating {} Gaussian vectors of dimension {}...", n, d);
     let mut vectors = generate_normal_gaussian_vectors(n, d).unwrap();
 
+    println!("Normalizing the vectors...");
     // Normalize the vectors
     for vector in vectors.iter_mut() {
         normalize_vector(vector);
