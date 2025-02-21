@@ -40,7 +40,7 @@ impl TensorTop1 {
             println!("Dimension of the data points: {}", data[0].len());
             println!("Alpha: {}", alpha);
             println!("Beta: {}", beta);
-            println!("Fast P  reprocessing: {}", fast_preprocessing);
+            println!("Fast Pre-processing: {}", fast_preprocessing);
             println!("Number of Top1 structures: {}", t);
             let m = (n as f64).pow(theta / (1. - alpha.powi(2))).ceil() as usize;
             println!("Number of Gaussian vectors for each Top1 structure: {}", m);

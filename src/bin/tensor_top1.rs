@@ -16,7 +16,7 @@ fn main() {
     let d = 100; // Dimension of each vector
     let alpha: f64 = 0.9; // close point according to cosine similarity
     let beta: f64 = 0.55; // far point according to cosine similarity
-    let fast_preprocessing = true;
+    let fast_preprocessing = false;
 
     // Load file
     let file_name = format!("data/dimension_{}/sample_{}.bin", d, n);
