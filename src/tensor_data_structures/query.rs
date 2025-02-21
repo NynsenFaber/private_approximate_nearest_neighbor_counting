@@ -3,6 +3,28 @@ use crate::utils::{find_close_vector, is_normalized};
 use std::collections::HashMap;
 use std::io;
 
+/// Query the hash table for a close vector to the query vector.
+/// If the query vector is not normalized, an error is returned.
+/// If no close vector is found, None is returned and a message is printed.
+///
+/// Parameters:
+/// - `q`: Query vector
+/// - `top1_list`: List of Top1 structures
+/// - `hash_table`: Hash table
+/// - `beta`: Threshold value
+///
+/// Returns:
+/// - `Result<Option<Vec<f64>>, io::Error>`: Close vector or None or an error
+///
+/// # Example
+/// If we have two Top1 structures with  ["0#"] and ["0#", "2#"] as the hashes of the
+/// Gaussian vectors that meet the threshold, the Cartesian product will be ["0#0#", "0#2#"] and the
+/// query will be searched in the hash table with the keys "0#0#" and "0#2#". If a close vector is found,
+/// it will be returned. If no close vector is found, None will be returned.
+///
+/// # Example
+/// If one of the Top1 structures has an empty hash, the Cartesian product will be empty and the query
+/// will not be searched in the hash table. In this case, None will be returned.
 pub fn query(
     q: &Vec<f64>,
     top1_list: &Vec<Top1>,
@@ -16,61 +38,71 @@ pub fn query(
             "Query vector is not normalized",
         ));
     }
-    // Get indices of Gaussian vectors that meet the threshold
+
+    // Get the cartesian product of the hashes of the Gaussian vectors that meet the threshold
     let indices = search(top1_list, q);
 
     // If the indices are empty, return None
     if indices.is_empty() {
-        println!("Some indices are empty.");
+        println!("Some indices are empty. Query is not possible.");
         return Ok(None);
     }
+
     // Search for a close vector in the hash table
     for i in indices {
         if let Some(vectors) = hash_table.get(&i) {
             if let Some(close_vector) = find_close_vector(q, vectors, beta) {
-                if cfg!(test) {
-                    println!("Found a close vector! .");
-                }
+                println!("Found a close vector! .");
                 return Ok(Some(close_vector));
             }
         }
     }
 
-    if cfg!(test) {
-        println!("No close vector found.");
-    }
     println!("No close vector found.");
     // If no vector meets the `beta` threshold, return None
     Ok(None)
 }
 
+/// Search for the indices of the Gaussian vectors that meet the threshold in each Top1 structure.
+/// The output is the Cartesian product of the indices.
+///
+/// Parameters:
+/// - `top1_list`: List of Top1 structures
+/// - `q`: Query vector
+///
+/// Returns:
+/// - `Vec<String>`: Cartesian product of the indices
+///
+/// # Example
+/// If we have two Top1 structures with  ["0#"] and ["0#", "2#"] as the hashes of the
+/// Gaussian vectors that meet the threshold, the Cartesian product will be ["0#0#", "0#2#"].
 fn search(top1_list: &Vec<Top1>, q: &Vec<f64>) -> Vec<String> {
     // Instantiate a collection to store the results
     let mut collection: Vec<Vec<String>> = Vec::new();
     // Iterate over each Top1 structure
-    top1_list.iter().for_each(|top1| {
-        collection.push(top1.search(q));
+    top1_list.iter().enumerate().for_each(|(i, top1)| {
+        let hashes = top1.search(q);
+        println!("For Top1 structure {}: {:?}", i, hashes);
+        collection.push(hashes);
     });
     // Create the Cartesian product of the results
     cartesian_product(collection)
 }
 
+/// Compute the Cartesian product of a collection of collections.
 fn cartesian_product(collection: Vec<Vec<String>>) -> Vec<String> {
-    // Instantiate a collection to store the results
-    let mut result: Vec<String> = Vec::new();
-    // Iterate over each element in the first collection
-    for element in collection[0].iter() {
-        // If there is only one collection, return the element
-        if collection.len() == 1 {
-            result.push(element.clone());
-        } else {
-            // Recursively call the function with the rest of the collections
-            for rest in cartesian_product(collection[1..].to_vec()) {
-                result.push(format!("{}{}", element, rest));
-            }
-        }
+    // If the collection is empty, return an empty vector
+    if collection.is_empty() {
+        return vec![];
     }
-    result
+
+    // Use fold to accumulate the Cartesian product
+    collection.iter().fold(vec!["".to_string()], |acc, set| {
+        // For each prefix in the accumulator, append each suffix in the current set
+        acc.into_iter()
+            .flat_map(|prefix| set.iter().map(move |suffix| format!("{}{}", prefix, suffix)))
+            .collect() // Collect the results into a vector
+    })
 }
 
 /// Test function

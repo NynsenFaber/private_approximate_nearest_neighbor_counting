@@ -12,10 +12,11 @@ struct GaussianVectors {
 }
 
 fn main() {
-    let n = 10000; // Number of vectors
-    let d = 10000; // Dimension of each vector
+    let n = 100000; // Number of vectors
+    let d = 100; // Dimension of each vector
     let alpha: f64 = 0.9; // close point according to cosine similarity
     let beta: f64 = 0.55; // far point according to cosine similarity
+    let fast_preprocessing = true;
 
     // Load file
     let file_name = format!("data/dimension_{}/sample_{}.bin", d, n);
@@ -41,7 +42,7 @@ fn main() {
     // Get first vector to query
     let query = data[0].clone();
     // Create TensorTop1 struct
-    let tensor_top1 = TensorTop1::new(data, alpha, beta, theta);
+    let tensor_top1 = TensorTop1::new(data, alpha, beta, theta, fast_preprocessing);
 
     // Query the Top1 struct
     let result = tensor_top1.query(&query);

@@ -15,6 +15,7 @@ pub struct Top1 {
 impl Top1 {
     /// Constructor for the Top1 struct.
     pub fn new(data: &Vec<Vec<f64>>, alpha: f64, beta: f64, theta: f64) -> Self {
+
         // Check inputs
         match check_input(&data, alpha, beta, theta) {
             Ok(_) => {}
@@ -26,14 +27,11 @@ impl Top1 {
         // Number of vectors in the data
         let n = data.len();
         // Number of Gaussian vectors
-        let m = (n as f64).pow(theta / (1. - alpha.powf(2.))).ceil() as usize;
-
+        let m = (n as f64).pow(theta / (1. - alpha.powi(2))).ceil() as usize;
         // Generate Gaussian vectors
         let gaussian_vectors = generate_normal_gaussian_vectors(m, d).unwrap();
-
         // Create match_list using parallel computation
         let match_list = get_match_list_parallel(data, &gaussian_vectors);
-
         // Create Top1 struct
         Top1 {
             gaussian_vectors,
@@ -44,13 +42,27 @@ impl Top1 {
 
     /// Given a `query`, return all the indices of the Gaussian vectors with dot product
     /// greater than or equal to the `threshold`. The output is encoded as Vec<String>.
+    ///
+    /// Parameters:
+    /// query: &Vec<f64> - The query vector as reference
+    ///
+    /// Returns:
+    /// Vec<String> - The hashes of the Gaussian vectors that meet the threshold
+    ///
+    /// Example: if Gaussian vectors 1 and 4 meet the threshold, the output will be ["1#", "4#"].
     pub fn search(&self, query: &Vec<f64>) -> Vec<String> {
-        let result = search(&self.gaussian_vectors, query, self.threshold);
-        println!("Result: {:?}", result);
-        result
+        search(&self.gaussian_vectors, query, self.threshold)
     }
 
     /// Given a number from 0 to n-1, return a hash, which is the index of the closest Gaussian vector.
+    ///
+    /// Parameters:
+    /// i: usize - The index of the data point
+    ///
+    /// Returns:
+    /// String - The hash of the closest Gaussian vector
+    ///
+    /// For example if the closest Gaussian vector is at index 3, the hash will be "3#".
     pub fn hash(&self, i: usize) -> String {
         // format returns a new String
         format!("{}#", self.match_list[i])
@@ -59,7 +71,19 @@ impl Top1 {
 
 /// Given a `query`, return all the indices of the Gaussian vectors with dot product
 /// greater than or equal to the `threshold`.
-fn search(gaussian_vectors: &[Vec<f64>], query: &Vec<f64>, threshold: f64) -> Vec<String> {
+///
+/// Parameters:
+/// gaussian_vectors: &Vec<Vec<f64>> - The Gaussian vectors as reference
+/// query: &Vec<f64> - The query vector as reference
+/// threshold: f64 - The threshold value
+///
+/// Returns:
+/// Vec<String> - The hashes of the Gaussian vectors
+///
+/// It might return a null vector if no Gaussian vector meets the threshold.
+fn search(gaussian_vectors: &Vec<Vec<f64>>,
+          query: &Vec<f64>,
+          threshold: f64) -> Vec<String> {
     gaussian_vectors
         .iter()
         .enumerate()
@@ -75,6 +99,13 @@ fn search(gaussian_vectors: &[Vec<f64>], query: &Vec<f64>, threshold: f64) -> Ve
 
 /// For each vector in `data`, find the Gaussian vector with the highest dot product.
 /// Store the indices of the closest Gaussian vector in a Vec<usize>.
+///
+/// Parameters:
+/// data: &Vec<Vec<f64> - The input data vectors as reference
+/// gaussian_vectors: &Vec<Vec<f64> - The Gaussian vectors as reference
+///
+/// Returns:
+/// Vec<usize> - The indices of the closest Gaussian vectors
 #[allow(dead_code)]
 fn get_match_list(
     data: &Vec<Vec<f64>>,             // Input data vectors
@@ -96,6 +127,13 @@ fn get_match_list(
 /// For each vector in `data`, find the Gaussian vector with the highest dot product.
 /// Store the indices of the closest Gaussian vector in a Vec<usize>.
 /// This function uses Rayon to parallelize the computation.
+///
+/// Parameters:
+/// data: &Vec<Vec<f64> - The input data vectors as reference
+/// gaussian_vectors: &Vec<Vec<f64> - The Gaussian vectors as reference
+///
+/// Returns:
+/// Vec<usize> - The indices of the closest Gaussian vectors
 #[allow(dead_code)]
 fn get_match_list_parallel(
     data: &Vec<Vec<f64>>,             // Input data vectors
@@ -104,15 +142,20 @@ fn get_match_list_parallel(
     // Use par_iter() to convert into a parallel iterator
     data.par_iter()
         .map(|point| {
+            // Iterate over Gaussian vectors
             gaussian_vectors
-                .iter() // Not many Gaussian vectors, so no need to parallelize
+                // Not many Gaussian vectors, so no need to parallelize
+                .iter()
+                // Enumerate to get index and value
                 .enumerate()
+                // Return tuple (j, dot_product)
                 .map(|(j, gaussian_vector)| (j, dot_product(point, gaussian_vector)))
+                // Find the index of the max dot product
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-                .unwrap()
-                .0
+                .unwrap() // Unwrap the result
+                .0 // Return the index
         })
-        .collect()
+        .collect() // Collect results into a Vec<usize>
 }
 
 /// Test function for Top1 struct.

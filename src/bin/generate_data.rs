@@ -11,8 +11,8 @@ struct GaussianVectors {
 }
 
 fn main() -> std::io::Result<()> {
-    let n = 10000; // Number of vectors
-    let d = 10000; // Dimension of each vector
+    let n = 100000; // Number of vectors
+    let d = 100; // Dimension of each vector
 
     // Define the folder and file name
     let folder_name = format!("data/dimension_{}", d);
