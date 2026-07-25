@@ -9,6 +9,7 @@
 
 use crate::utils::{dot_product, generate_unit_sphere_vectors, normalize_vector, random_unit_vector};
 use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 use savefile::prelude::*;
@@ -146,6 +147,15 @@ pub fn generate(config: &GeneratorConfig) -> Result<SyntheticDataset, String> {
         points.extend(plant_neighbours(&query, &config.plant, &mut rng));
         queries.push(query);
     }
+
+    // Planted points are appended after the background, so without this shuffle the
+    // storage order would encode which points are the answers. Nothing in the LSF
+    // structure cares (a point lands in its bucket regardless of its index), but any
+    // baseline that scans in storage order would be measured against a worst case
+    // layout, so the order is randomized once here rather than at every use site.
+    let mut rng = StdRng::seed_from_u64(crate::utils::derive_seed(config.seed, 1 << 41));
+    points.shuffle(&mut rng);
+
     Ok(SyntheticDataset { points, queries })
 }
 
@@ -256,5 +266,45 @@ mod tests {
             assert!(best_similarity(&dataset.points, query) >= 0.9);
         }
         assert!(generate(&GeneratorConfig { n: 10, ..config }).is_err());
+    }
+
+    /// The planted points must be spread through the data set, not parked at the
+    /// end: a baseline that scans in storage order would otherwise be timed against
+    /// a worst case layout rather than a representative one.
+    #[test]
+    fn test_planted_points_are_not_all_at_the_end() {
+        let config = GeneratorConfig {
+            n: 2000,
+            d: 32,
+            queries: 1,
+            plant: PlantConfig {
+                count: 40,
+                similarity: 0.9,
+                tightness: 0.0,
+            },
+            seed: 17,
+        };
+        let dataset = generate(&config).unwrap();
+        let query = &dataset.queries[0];
+        let positions: Vec<usize> = dataset
+            .points
+            .iter()
+            .enumerate()
+            .filter(|(_, point)| dot_product(query, point) >= 0.9)
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(positions.len(), 40);
+        // Without the shuffle every position would be >= n - 40 = 1960.
+        let first = positions[0];
+        assert!(
+            first < 1960,
+            "planted points still start at index {first}, i.e. only at the tail"
+        );
+        // The mean position should sit near the middle of the data set, not the end.
+        let mean = positions.iter().sum::<usize>() as f64 / positions.len() as f64;
+        assert!(
+            (mean - 1000.).abs() < 400.,
+            "planted points are not spread out, mean position {mean}"
+        );
     }
 }

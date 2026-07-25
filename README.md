@@ -24,7 +24,7 @@ ANN search, and the **mean absolute error** of private counting.
 # Rust toolchain (if not already installed)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-cargo test                                   # 44 unit tests
+cargo test                                   # 45 unit tests
 cargo run --release --bin ann_experiment     # success/failure metric for ANN
 cargo run --release --bin dp_annc_experiment # mean absolute error for DP-ANNC
 ```
@@ -113,9 +113,9 @@ all other parameters from the paper's formulas:
 
 | `n` | `t` | `m_sub` | build | success rate | `\|I(q)\|` | buckets visited | query |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 10 000 | 3 | 145 | 0.05 s | 0.685 ± 0.033 | 17 455 | 54.6 | 0.10 ms |
-| 100 000 | 3 | 502 | 0.94 s | 0.745 ± 0.031 | 318 554 | 278.1 | 0.90 ms |
-| 1 000 000 | 3 | 1 741 | 30.2 s | 0.820 ± 0.027 | 5 552 064 | 1 326.4 | 7.26 ms |
+| 10 000 | 3 | 145 | 0.04 s | 0.685 ± 0.033 | 17 455 | 54.6 | 0.094 ms |
+| 100 000 | 3 | 502 | 0.94 s | 0.745 ± 0.031 | 318 554 | 278.1 | 0.910 ms |
+| 1 000 000 | 3 | 1 741 | 29.2 s | 0.820 ± 0.027 | 5 552 064 | 1 326.4 | 7.300 ms |
 
 `|I(q)|` is the size of the Cartesian product the query covers; "buckets visited"
 counts the non-empty ones actually opened, which for search also stops at the first
@@ -139,29 +139,42 @@ enters either measurement):
 
 | `n` | `\|I(q)\|` | ANN query | points scanned | linear query | speedup |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 50 | 68 | 0.008 ms | 30.5 | 0.003 ms | 0.4× (linear wins) |
-| 100 | 68 | 0.008 ms | 80.5 | 0.008 ms | 1.1× |
-| 200 | 91 | 0.008 ms | 180.5 | 0.015 ms | 1.9× |
-| 10 000 | 17 379 | 0.10 ms | 9 811 | 0.84 ms | 8.0× |
-| 100 000 | 313 965 | 0.96 ms | 91 287 | 12.21 ms | 12.7× |
-| 1 000 000 | 5 635 915 | 7.16 ms | 519 713 | 68.69 ms | 9.6× |
+| 100 | 79 | 0.008 ms | 52.5 | 0.006 ms | 0.7× (linear wins) |
+| 200 | 107 | 0.008 ms | 99.6 | 0.008 ms | 1.0× |
+| 800 | 617 | 0.017 ms | 407.6 | 0.034 ms | 2.0× |
+| 10 000 | 17 455 | 0.094 ms | 4 917 | 0.467 ms | 5.0× |
+| 100 000 | 318 554 | 0.910 ms | 43 880 | 8.608 ms | 9.5× |
+| 1 000 000 | 5 552 064 | 7.300 ms | 317 934 | 70.510 ms | 9.7× |
 
-The **crossover is around `n ≈ 90–100`** for this `(α, β) = (0.7, 0.4)`, `d = 128`
-setup — below it `m_sub` is clamped to its minimum (16) anyway, so that regime is a
-degenerate edge case rather than a real operating point. Past it, TensorCloseTop-1
-wins by a growing margin, 8–13× in the tested range, because `|I(q)|` is only the
-size of the Cartesian product a query *could* touch; the bucket index means it only
-opens the non-empty buckets that actually collide with the query, so the real work
-per query grows far slower than `|I(q)|` or `n`. A linear scan, in contrast, is
-`O(n·d)` and gets no benefit from the fact that the target is rare — here, with the
-planted point essentially the only match, it scans almost the entire data set every
-time. This crossover is specific to how selective `(α, β)` is: a looser `β` shortens
-the linear scan (more points qualify, so it can stop earlier) without changing the
-ANN structure's cost much, which pushes the crossover to a larger `n`. At `n = 10⁴`
-with `β = 0.1` instead of `0.4`, for instance, a random point already qualifies with
-probability `≈ 10⁻³` in `d = 128`, so linear scan stops after 8.2 points on average
-(0.001 ms) and is 17× *faster* than the structure (0.016 ms) — the crossover moves
-well past `10⁴`. Run `--beta` at a few values to see this directly.
+The **crossover is at `n ≈ 200`** for this `(α, β) = (0.7, 0.4)`, `d = 128` setup.
+Past it TensorCloseTop-1 wins by a growing margin, 5–10× in the tested range,
+because `|I(q)|` is only the size of the Cartesian product a query *could* touch;
+the bucket index opens only the non-empty buckets that actually collide with the
+query, so the real work per query grows far slower than `|I(q)|` or `n` — 1 332
+points inspected at `n = 10⁶`, against 317 934 scanned by the baseline.
+
+Two things make this comparison fair rather than flattering, and both matter:
+
+* **The planted points are shuffled into the data set.** They are generated after
+  the background, so in storage order they would all sit at the very end and the
+  scan would have to walk the entire data set before reaching one. That is a worst
+  case layout, not a representative one, and it inflated the measured speedup by
+  roughly 2× (at `n = 10⁵`: 12.7× before, 9.5× after). `generate` now shuffles once
+  with a seeded RNG, so a match sits at a uniformly random position and the scan
+  stops after `≈ n/2` points as it should. The structure is indifferent to the
+  order — the success rates are bit-for-bit identical either way — so this only
+  ever changed the baseline. A unit test pins the property.
+* **The baseline is exact.** It always finds a match when one exists, while the
+  structure succeeds 74.5% of the time at `n = 10⁵`. The speedup is therefore
+  bought with a real accuracy loss, which is the whole point of the `(α, β)`
+  relaxation, not a free win.
+
+The crossover also depends on how selective `(α, β)` is: a looser `β` lets the scan
+stop earlier without changing the structure's cost much. At `n = 10⁴` with
+`β = 0.1`, a uniformly random point already qualifies with probability `≈ 10⁻³` in
+`d = 128`, so the scan stops after 7.8 points on average (0.001 ms) and is 18.7×
+*faster* than the structure (0.015 ms) — the crossover moves well past `10⁴`. Run
+`--beta` at a few values to see this directly.
 
 ## Experiment 2: DP-ANNC mean absolute error
 
@@ -366,10 +379,11 @@ src/
 cargo test
 ```
 
-44 unit tests, covering: the truncated Laplace support/mean and the fact that
+45 unit tests, covering: the truncated Laplace support/mean and the fact that
 singleton buckets are always suppressed; the collision band and the fact that every
 stored point really lies inside it; the partition property (no point in two
 buckets) that the sensitivity argument depends on; the equivalence of the fast
 bucket index with naive Cartesian enumeration; the decomposition of a count into
 near and far points; that a private estimate stays within its error bound; and the
-geometry of the data generator.
+geometry of the data generator, including that planted points are shuffled
+through the data set rather than parked at its end.
