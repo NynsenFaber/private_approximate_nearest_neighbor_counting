@@ -331,16 +331,44 @@ real but small** — under 9% here — and split two ways:
 
 ## Implementation notes
 
-* **Bucket index.** Enumerating `B_1 × … × B_t` costs `|I(q)|` lookups, but only
-  the non-empty buckets carry information, and with `m = m_sub^t ≫ n` almost the
-  whole product is empty. [`BucketIndex`](src/tensor_data_structures/bucket_index.rs)
-  keeps the stored keys sorted lexicographically and walks them as a prefix tree,
-  visiting only the non-empty buckets that match — at `n = 10⁵` with the default
-  parameters that is 278 buckets instead of 318 554 lookups, a 13.7× faster query
-  (12.3 ms → 0.90 ms) with identical answers — both visit the matching buckets in
-  lexicographic order. A unit test checks the traversal against the naive
-  enumeration ([`probe::ProbeIter`](src/tensor_data_structures/probe.rs)) on random
-  inputs.
+* **Bucket index: a prefix tree over sorted keys, built once.** Enumerating
+  `B_1 × … × B_t` costs `|I(q)|` lookups, but only the non-empty buckets carry
+  information, and with `m = m_sub^t ≫ n` almost the whole product is empty —
+  at `n = 10⁵` the product has 318 554 candidate keys, of which only 278 are
+  ever occupied. [`BucketIndex`](src/tensor_data_structures/bucket_index.rs)
+  avoids ever materializing that product.
+
+  - **Build, once.** `TensorCloseTop1::build` inserts every stored point into a
+    `HashMap<BucketKey, Vec<u32>>` — `O(n)` — then `BucketIndex::from_map`
+    sorts the resulting `B ≤ n` non-empty entries lexicographically by key —
+    `O(B log B)`. `B` is bounded by the number of *stored points*, never by
+    `|I(q)|`; the sort runs exactly once, at construction, and every query
+    afterwards reuses it.
+  - **Query, every time.** A sorted array of length-`t` keys is a prefix tree
+    in disguise: a contiguous range that shares the same first `k` components
+    *is* the subtree rooted at that prefix, with no pointers or nodes needed
+    to represent it. `for_each_match` walks it level by level — at each level
+    it merges the query's candidate filter indices for that level against the
+    keys in the current range, using binary search (`lower_bound`/
+    `upper_bound`) to jump straight past runs of keys that cannot match
+    instead of visiting them one by one, then recurses only into the
+    sub-ranges that do match. The cost is roughly `O(t · V · log B)`, where
+    `V` is the number of buckets actually *visited* — 278 against
+    `|I(q)| = 318 554` at `n = 10⁵` — rather than `O(|I(q)|)`. That is a
+    13.7× faster query (12.3 ms → 0.90 ms) with identical answers: a unit
+    test checks the traversal against the naive enumeration
+    ([`probe::ProbeIter`](src/tensor_data_structures/probe.rs)) on random
+    inputs, and both visit the matching buckets in lexicographic order.
+
+  The alternative — enumerate every key of `B_1 × … × B_t` and do a hash
+  lookup per key — is what the pseudocode literally describes, and it is what
+  a first, faithful implementation does. It also throws away exactly the
+  saving the tensorization trick was built to give: `m_sub^t` simulated
+  buckets from only `t · m_sub` stored filters, read back out one key at a
+  time. Sorting the *occupied* buckets once at build time, and walking that
+  sorted order at query time instead of the candidate product, is what
+  actually realizes the `n^{ρ+o(1)}` query time of Theorem 19, rather than the
+  `|I(q)|` of a literal reading of Algorithm 5.
 * **Parallelism.** Construction and the brute force ground truth use rayon; queries
   are single threaded so that the reported per-query time is meaningful.
 * **Reproducibility.** Everything derives from one seed: filters, data, and noise.
