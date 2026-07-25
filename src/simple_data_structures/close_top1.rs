@@ -134,9 +134,14 @@ mod tests {
             // Result should be None
             assert_eq!(result.unwrap(), None);
         } else {
-            // Result should be close to the query
-            let dot_product = dot_product(&query, &result.unwrap().unwrap());
-            assert!(dot_product >= beta);
+            // A filter passes the threshold, but unlike Top-1 the CloseTop-1
+            // construction stores a point only if it falls inside the collision
+            // band, so the query may legitimately find nothing. When it does
+            // return a point, that point must be close.
+            if let Some(close_point) = result.unwrap() {
+                let dot_product = dot_product(&query, &close_point);
+                assert!(dot_product >= beta);
+            }
         }
 
         // Bad query

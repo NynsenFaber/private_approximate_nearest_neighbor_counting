@@ -1,50 +1,89 @@
-use savefile::prelude::*; // For save_file
-use savefile_derive::Savefile; // For #[derive(Savefile)]
+//! Generates a synthetic data set of random unit vectors (with optional planted
+//! near neighbours) and stores it on disk, so that several experiments can share
+//! exactly the same input.
+//!
+//! Run `cargo run --release --bin generate_data -- --help` for the options.
+
+use ann_rust::cli::Args;
+use ann_rust::data::{generate, save, GeneratorConfig, PlantConfig};
 use std::fs::create_dir_all;
-use std::io::{Error, ErrorKind}; // Import only Error and ErrorKind
-use rayon::prelude::*;
+use std::process::exit;
+use std::time::Instant;
 
-use ann_rust::utils::{generate_normal_gaussian_vectors_parallel, normalize_vector}; // Import generate_gaussian_vectors
+const OPTIONS: &[&str] = &[
+    "help",
+    "n",
+    "d",
+    "queries",
+    "neighbours",
+    "similarity",
+    "tightness",
+    "seed",
+    "out",
+];
 
-#[derive(Savefile)] // Derive Savefile for serialization
-struct GaussianVectors {
-    vectors: Vec<Vec<f64>>,
+const HELP: &str = "\
+Generates a synthetic data set of unit vectors with planted near neighbours.
+
+Options (defaults in brackets):
+  --n <usize>          number of points, planted neighbours included [100000]
+  --d <usize>          dimension [128]
+  --queries <usize>    number of query vectors [200]
+  --neighbours <usize> planted points per query [1]
+  --similarity <f64>   inner product of a planted point with its query [0.7]
+  --tightness <f64>    mutual similarity of the planted points, 0 = independent [0.0]
+  --seed <u64>         master seed [1]
+  --out <path>         output file [data/dimension_<d>/sample_<n>.bin]
+";
+
+fn main() {
+    if let Err(message) = run() {
+        eprintln!("error: {message}");
+        exit(1);
+    }
 }
 
-fn main() -> std::io::Result<()> {
-    let n = 10_000_000; // Number of vectors
-    let d = 100; // Dimension of each vector
+fn run() -> Result<(), String> {
+    let args = Args::parse(OPTIONS)?;
+    if args.has("help") {
+        println!("{HELP}");
+        return Ok(());
+    }
 
-    // Define the folder and file name
-    let folder_name = format!("data/dimension_{}", d);
-    let file_name = format!("{}/sample_{}.bin", folder_name, n);
+    let n: usize = args.get("n", 100_000)?;
+    let d: usize = args.get("d", 128)?;
+    let config = GeneratorConfig {
+        n,
+        d,
+        queries: args.get("queries", 200)?,
+        plant: PlantConfig {
+            count: args.get("neighbours", 1)?,
+            similarity: args.get("similarity", 0.7)?,
+            tightness: args.get("tightness", 0.0)?,
+        },
+        seed: args.get("seed", 1)?,
+    };
 
-    // Generate the Gaussian vectors
-    println!("Generating {} Gaussian vectors of dimension {}...", n, d);
-    let mut vectors = generate_normal_gaussian_vectors_parallel(n, d)?;
+    let folder = format!("data/dimension_{d}");
+    let path = args
+        .get_string("out")
+        .map(|path| path.to_string())
+        .unwrap_or_else(|| format!("{folder}/sample_{n}.bin"));
 
-    println!("Normalizing the vectors...");
-    // Normalize the vectors
-    vectors.par_iter_mut().for_each(|vector| {
-        normalize_vector(vector);
-    });
+    println!("generating {n} unit vectors in dimension {d}...");
+    let start = Instant::now();
+    let dataset = generate(&config)?;
+    println!(
+        "generated {} points and {} queries in {:.2}s",
+        dataset.points.len(),
+        dataset.queries.len(),
+        start.elapsed().as_secs_f64()
+    );
 
-    // Wrap vectors in a struct for serialization
-    let data = GaussianVectors { vectors };
-
-    // Create the folder if not present
-    create_dir_all(&folder_name)?;
-
-    // Save the file
-    save_vectors(&file_name, &data)?;
-
-    println!("Vectors successfully saved to {}", file_name);
-
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    }
+    save(&path, &dataset).map_err(|e| e.to_string())?;
+    println!("saved to {path}");
     Ok(())
-}
-
-/// Save the Gaussian vectors to a binary file.
-fn save_vectors(file_name: &str, data: &GaussianVectors) -> std::io::Result<()> {
-    save_file(file_name, 0, data)
-        .map_err(|e| Error::new(ErrorKind::Other, format!("Failed to save file: {}", e)))
 }
