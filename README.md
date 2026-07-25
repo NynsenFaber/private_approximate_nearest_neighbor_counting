@@ -89,6 +89,8 @@ input point survives the call.
   zero, so the realized bound is `A ×` (number of released counters hit), which the
   experiment reports alongside `|I(q)|`.
 
+All experiments below fix `δ = 10⁻⁶` and vary `ε`; `--delta` changes it.
+
 **Caveats for real deployments.** The noise is drawn from `StdRng` seeded by a
 user-supplied number so that experiments are reproducible; a real release must seed
 from OS entropy and keep the seed secret. Sampling uses `f64` arithmetic and is
