@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  # One run per branch: a new push cancels the previous, still-running build.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail the build on any compiler warning.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.toolchain }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.toolchain == 'beta' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        toolchain: [stable]
+        include:
+          # Minimum supported version, pinned by `rust-version` in Cargo.toml.
+          # One target only, so a bump shows up without tripling CI time.
+          - os: ubuntu-latest
+            toolchain: "1.82"
+          # Early warning for upstream breakage; never blocks a merge.
+          - os: ubuntu-latest
+            toolchain: beta
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust ${{ matrix.toolchain }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.toolchain }}
+
+      - name: Build
+        run: cargo build --all-targets --verbose
+
+      # The test suite is arithmetic-heavy (200k truncated Laplace samples, several
+      # structure builds), so it runs in release: a debug run is minutes slower for
+      # no extra coverage.
+      - name: Test
+        run: cargo test --release --all-targets --verbose
+
+      - name: Doc tests
+        run: cargo test --release --doc --verbose
+
+  lint:
+    name: fmt + clippy + docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Documentation builds without warnings
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps --document-private-items
+
+  smoke:
+    name: experiments run end to end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Tiny parameters: this checks the binaries still run and agree with their
+      # own ground truth, not that the published numbers reproduce (those need
+      # n = 10^6 and are documented in the README instead).
+      - name: ANN success rate
+        run: cargo run --release --bin ann_experiment -- --n 2000 --d 32 --trials 20 --seed 1
+
+      - name: DP-ANNC error
+        run: >
+          cargo run --release --bin dp_annc_experiment --
+          --n 2000 --d 32 --queries 5 --neighbours 200 --epsilons 1,8 --repeat 2 --seed 1
+
+      - name: Data generation round trip
+        run: |
+          cargo run --release --bin generate_data -- --n 2000 --d 32 --queries 5 --out data/ci.bin
+          cargo run --release --bin ann_experiment -- --data data/ci.bin --no-linear

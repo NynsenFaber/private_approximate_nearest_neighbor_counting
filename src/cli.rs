@@ -27,7 +27,9 @@ impl Args {
         let mut iterator = arguments.into_iter().peekable();
         while let Some(argument) = iterator.next() {
             let Some(stripped) = argument.strip_prefix("--") else {
-                return Err(format!("unexpected argument '{argument}', options start with --"));
+                return Err(format!(
+                    "unexpected argument '{argument}', options start with --"
+                ));
             };
             let (key, value) = match stripped.split_once('=') {
                 Some((key, value)) => (key.to_string(), value.to_string()),
@@ -86,7 +88,11 @@ impl Args {
     }
 
     /// Reads a comma separated list, e.g. `--epsilons 0.5,1,2`.
-    pub fn get_list<T: std::str::FromStr>(&self, key: &str, default: Vec<T>) -> Result<Vec<T>, String> {
+    pub fn get_list<T: std::str::FromStr>(
+        &self,
+        key: &str,
+        default: Vec<T>,
+    ) -> Result<Vec<T>, String> {
         match self.values.get(key) {
             None => Ok(default),
             Some(raw) => raw
@@ -117,7 +123,14 @@ mod tests {
     #[test]
     fn test_parsing_forms() {
         let parsed = args(
-            &["--n", "1000", "--alpha=0.9", "--strict", "--epsilons", "0.5,1,2"],
+            &[
+                "--n",
+                "1000",
+                "--alpha=0.9",
+                "--strict",
+                "--epsilons",
+                "0.5,1,2",
+            ],
             &["n", "alpha", "strict", "epsilons"],
         )
         .unwrap();
@@ -136,7 +149,10 @@ mod tests {
     fn test_errors() {
         assert!(args(&["--typo", "1"], &["n"]).is_err());
         assert!(args(&["n", "1"], &["n"]).is_err());
-        assert!(args(&["--n", "abc"], &["n"]).unwrap().get::<usize>("n", 0).is_err());
+        assert!(args(&["--n", "abc"], &["n"])
+            .unwrap()
+            .get::<usize>("n", 0)
+            .is_err());
     }
 
     #[test]

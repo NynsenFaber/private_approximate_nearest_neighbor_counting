@@ -110,7 +110,7 @@ impl Parameters {
         }
         let rho = (1. - alpha * alpha) * (1. - beta * beta) / (1. - alpha * beta).powi(2);
         let theta = config.theta.unwrap_or(rho);
-        if !(theta > 0.0) || !theta.is_finite() {
+        if !(theta.is_finite() && theta > 0.0) {
             return Err(format!("theta must be finite and positive, got {theta}"));
         }
 
@@ -345,7 +345,10 @@ impl TensorCloseTop1 {
         // point ids it stores, so keeping them alongside would just pay for that
         // information twice. Only the (data independent) filters are needed at
         // query time, so that is all that survives past this point.
-        let filters: Vec<FilterSet> = substructures.into_iter().map(|factor| factor.filters).collect();
+        let filters: Vec<FilterSet> = substructures
+            .into_iter()
+            .map(|factor| factor.filters)
+            .collect();
 
         Ok(TensorCloseTop1 {
             params,
@@ -457,19 +460,6 @@ impl TensorCloseTop1 {
         }
     }
 
-    /// Number of buckets in the Cartesian product selected by `query`, without
-    /// inspecting them (saturates at `usize::MAX`).
-    pub fn probe_count(&self, query: &[f64]) -> usize {
-        product_size(&self.candidate_filters(query))
-    }
-
-    /// The exact bucket histogram, i.e. the counters `T[1..m]` of Algorithm 3.
-    pub fn bucket_counts(&self) -> impl Iterator<Item = (&BucketKey, u64)> {
-        self.buckets
-            .iter()
-            .map(|(key, bucket)| (key, bucket.len() as u64))
-    }
-
     /// Releases the counting structure under differential privacy (Theorem 13).
     ///
     /// The returned structure holds only the (data independent) filters and the
@@ -546,6 +536,57 @@ mod tests {
             ..Config::default()
         };
         assert!(Parameters::resolve(&bad, 100, 8).is_err());
+        // beta = 0 is admissible: Definition 2 asks for 0 <= beta < alpha < 1.
+        assert!(Parameters::resolve(
+            &Config {
+                alpha: 0.5,
+                beta: 0.0,
+                ..Config::default()
+            },
+            100,
+            8
+        )
+        .is_ok());
+    }
+
+    /// Algorithm 5 line 9 computes `eta` from the *per factor* filter count `m̃`,
+    /// not from the `m̃^t` simulated total. Getting this wrong would silently
+    /// mis-tune every query: a threshold derived from `m̃^t` is far too high, so
+    /// `search` would return almost no candidate filters.
+    #[test]
+    fn test_eta_is_derived_from_m_sub_not_from_the_simulated_total() {
+        let params = Parameters::resolve(&test_config(0), 100_000, 64).unwrap();
+        assert_eq!(
+            params.eta,
+            crate::utils::get_threshold(params.alpha, params.m_sub)
+        );
+        assert!(
+            params.eta < crate::utils::get_threshold(params.alpha, params.total_buckets() as usize)
+        );
+        // Each factor's collision band likewise uses m_sub (Algorithm 5 line 4
+        // constructs every factor as CloseTop-1(S, m̃)).
+        assert_eq!(params.band, crate::utils::collision_band(params.m_sub));
+        // A query must be able to reach the filters points were assigned to.
+        assert!(params.eta < params.band.0);
+    }
+
+    /// A point is stored only if it collides in *every* factor: its key is the
+    /// concatenation of the `t` filter indices, so one miss loses the point. This is
+    /// the union bound over `t` factors in the proof of Lemma 15.
+    #[test]
+    fn test_a_point_missing_in_one_factor_is_not_stored() {
+        let data = generate_unit_sphere_vectors(500, 16, 41);
+        let strict = Config {
+            fallback_to_argmax: false,
+            ..test_config(42)
+        };
+        let structure = TensorCloseTop1::build(data.clone(), &strict).unwrap();
+        // Without the fallback some points collide with no filter and are dropped,
+        // which is exactly what Algorithm 4 line 9 prescribes.
+        assert!(structure.stored_points() < structure.params.n);
+        // With the fallback every point is kept.
+        let lenient = TensorCloseTop1::build(data, &test_config(42)).unwrap();
+        assert_eq!(lenient.stored_points(), lenient.params.n);
     }
 
     /// Every stored point must be retrievable from its own bucket, and the

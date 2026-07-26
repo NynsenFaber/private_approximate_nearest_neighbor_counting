@@ -7,7 +7,9 @@
 //! Each query therefore comes with *planted* neighbours at a prescribed inner
 //! product from it (see [`PlantConfig`]).
 
-use crate::utils::{dot_product, generate_unit_sphere_vectors, normalize_vector, random_unit_vector};
+use crate::utils::{
+    dot_product, generate_unit_sphere_vectors, normalize_vector, random_unit_vector,
+};
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
@@ -58,7 +60,11 @@ pub struct GeneratorConfig {
 ///
 /// Writes `x = s * anchor + sqrt(1 - s^2) * u` with `u` a random unit vector
 /// orthogonal to `anchor`.
-pub fn point_at_similarity<R: Rng + ?Sized>(anchor: &[f64], similarity: f64, rng: &mut R) -> Vec<f64> {
+pub fn point_at_similarity<R: Rng + ?Sized>(
+    anchor: &[f64],
+    similarity: f64,
+    rng: &mut R,
+) -> Vec<f64> {
     let d = anchor.len();
     let mut orthogonal = loop {
         let mut candidate = random_unit_vector(d, rng);
@@ -142,7 +148,8 @@ pub fn generate(config: &GeneratorConfig) -> Result<SyntheticDataset, String> {
     let mut points = generate_unit_sphere_vectors(background, config.d, config.seed);
     let mut queries = Vec::with_capacity(config.queries);
     for q in 0..config.queries {
-        let mut rng = StdRng::seed_from_u64(crate::utils::derive_seed(config.seed, 1 << 40 | q as u64));
+        let mut rng =
+            StdRng::seed_from_u64(crate::utils::derive_seed(config.seed, 1 << 40 | q as u64));
         let query = random_unit_vector(config.d, &mut rng);
         points.extend(plant_neighbours(&query, &config.plant, &mut rng));
         queries.push(query);
@@ -181,13 +188,14 @@ pub fn best_similarity(points: &[Vec<f64>], query: &[f64]) -> f64 {
 /// exists — so it is the accuracy baseline that TensorCloseTop1 trades against
 /// query time.
 pub fn linear_search_first(points: &[Vec<f64>], query: &[f64], beta: f64) -> Option<usize> {
-    points.iter().position(|point| dot_product(query, point) >= beta)
+    points
+        .iter()
+        .position(|point| dot_product(query, point) >= beta)
 }
 
 /// Saves a data set to `path` in savefile's binary format.
 pub fn save(path: &str, dataset: &SyntheticDataset) -> std::io::Result<()> {
-    save_file(path, 0, dataset)
-        .map_err(|e| Error::new(ErrorKind::Other, format!("failed to save {path}: {e}")))
+    save_file(path, 0, dataset).map_err(|e| Error::other(format!("failed to save {path}: {e}")))
 }
 
 /// Loads a data set previously written by [`save`].

@@ -1,8 +1,11 @@
 [package]
 name = "ann_rust"
-version = "0.1.0"
+version = "2.0.0"
 authors = ["Fabrizio Boninsegna"]
 edition = "2021"
+# `Option::is_none_or` (close_top1.rs) and `io::Error::other` (data.rs).
+rust-version = "1.82"
+description = "Locality sensitive filters for approximate near neighbour search and differentially private approximate near neighbour counting (Aumüller, Boninsegna, Silvestri, FORC 2025)"
 
 [dependencies]
 rand_distr = "0.4.3"

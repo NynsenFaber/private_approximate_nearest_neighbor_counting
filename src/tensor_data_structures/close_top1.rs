@@ -9,6 +9,24 @@
 //! product), CloseTop-1 bounds the inner product from *both* sides by construction,
 //! so no assumption on the limiting distribution of the extreme concomitant is
 //! needed (Lemma 15 of the paper).
+//!
+//! # The collision probability at finite `m`
+//!
+//! Lemma 23 states that a point fails to collide with probability `m^{-Omega(1)}`,
+//! via Lemma 24's bound `Pr[<a, x> in band] >= (2 sqrt(pi)/3) log m / m`.
+//!
+//! That constant is optimistic. Lemma 24 is derived from Proposition 22, whose
+//! printed form carries `sqrt(2 pi)` in the numerator where the Gaussian tail bound
+//! it cites has it in the denominator — a factor `2 pi` too large, which makes the
+//! printed *lower* bound larger than the quantity it bounds. At `m = 502` (the
+//! default `m_sub` for `n = 10^5`) the printed Lemma 24 bound is `0.0146` while the
+//! true band probability is `0.00278`. The asymptotic form `Omega(log m / m)`, and
+//! therefore every downstream result, is unaffected — only the constant moves.
+//!
+//! The practical consequence is real, though: at `m = 502` a single filter accepts a
+//! point with probability `0.00278`, so a factor stores only `1 - (1 - p)^m = 75.2%`
+//! of the points and `t = 3` factors store `42.6%`. That is what
+//! `fallback_to_argmax` exists to repair; see the README.
 
 use crate::utils::{collision_band, dot_product, generate_normal_gaussian_vectors_seeded};
 use rayon::prelude::*;
@@ -27,7 +45,11 @@ pub struct FilterSet {
 }
 
 impl FilterSet {
-    /// Returns the indices of all filters with `<a_i, q> >= eta` (procedure `search`).
+    /// Indices of the filters a query must open: all `i` with `<a_i, q> >= eta`
+    /// (Algorithm 5, `search` line 3).
+    ///
+    /// The result is ascending, which [`super::bucket_index::BucketIndex`] relies
+    /// on to intersect it against the sorted bucket keys by merging.
     pub fn search(&self, query: &[f64]) -> Vec<u32> {
         self.gaussian_vectors
             .iter()
@@ -35,11 +57,6 @@ impl FilterSet {
             .filter(|(_, filter)| dot_product(query, filter) >= self.eta)
             .map(|(i, _)| i as u32)
             .collect()
-    }
-
-    /// Number of filters `m`.
-    pub fn m(&self) -> usize {
-        self.gaussian_vectors.len()
     }
 }
 
@@ -85,19 +102,10 @@ impl CloseTop1 {
         }
     }
 
-    /// Returns the indices of all filters with `<a_i, q> >= eta` (procedure `search`).
-    pub fn search(&self, query: &[f64]) -> Vec<u32> {
-        self.filters.search(query)
-    }
-
-    /// Filter assigned to the `i`-th input point, if the point was stored.
+    /// Filter assigned to the `i`-th input point, or `None` if the point collided
+    /// with nothing and is therefore not stored by this factor.
     pub fn bucket_of(&self, i: usize) -> Option<u32> {
         self.match_list[i]
-    }
-
-    /// Number of filters `m` held by this factor.
-    pub fn m(&self) -> usize {
-        self.filters.m()
     }
 
     /// Number of input points this factor was able to store.
@@ -106,7 +114,18 @@ impl CloseTop1 {
     }
 }
 
-/// Associates `point` to the first filter inside the collision band.
+/// Assigns `point` to the **first** filter whose inner product falls inside the
+/// collision band (Algorithm 4 lines 5-9 — the `break` is the early `return`).
+///
+/// "First", not "best": that is the whole difference from Top-1. Because the band
+/// bounds `<a, x>` from *both* sides, the analysis needs no assumption about the
+/// limiting distribution of the maximum (Lemma 15).
+///
+/// With `fallback_to_argmax` a point that matched no filter is kept at its Top-1
+/// (argmax) filter instead of being dropped. This is *not* in Algorithm 4; see the
+/// README for why it matters at finite `n`. It cannot break anything downstream:
+/// the point still lands in exactly one bucket, which is all the sensitivity-1
+/// argument of Theorem 13 needs.
 fn assign(
     point: &[f64],
     gaussian_vectors: &[Vec<f64>],
@@ -120,7 +139,9 @@ fn assign(
         if inner_product >= lower && inner_product <= upper {
             return Some(i as u32);
         }
-        if fallback_to_argmax && best.map_or(true, |(value, _)| inner_product > value) {
+        // Only reached when no filter has matched yet, so on exit `best` is the
+        // argmax over all `m` filters.
+        if fallback_to_argmax && best.is_none_or(|(value, _)| inner_product > value) {
             best = Some((inner_product, i as u32));
         }
     }
@@ -178,6 +199,9 @@ mod tests {
             .filter(|(_, filter)| dot_product(query, filter) >= eta)
             .map(|(i, _)| i as u32)
             .collect();
-        assert_eq!(factor.search(query), expected);
+        let found = factor.filters.search(query);
+        assert_eq!(found, expected);
+        // The bucket index merges these against sorted keys, so order matters.
+        assert!(found.windows(2).all(|pair| pair[0] < pair[1]));
     }
 }

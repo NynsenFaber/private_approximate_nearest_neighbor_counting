@@ -5,10 +5,11 @@
 //! and compared with the private estimate. Three quantities are reported per
 //! privacy budget:
 //!
-//! * `MAE`      - mean absolute error against `|S ∩ B(q, alpha)|`;
-//! * `interval` - mean distance from the interval `[|S ∩ B(q, alpha)|, |S ∩ B(q, beta)|]`
-//!                that Definition 3 declares correct (0 means the answer is valid);
-//! * `bound`    - the worst case `A * |I(q)|` additive error of Theorem 13.
+//! * `MAE` - mean absolute error against `|S ∩ B(q, alpha)|`;
+//! * `interval` - mean distance from the interval
+//!   `[|S ∩ B(q, alpha)|, |S ∩ B(q, beta)|]` that Definition 3 declares correct
+//!   (0 means the answer is valid);
+//! * `bound` - the worst case `A * |I(q)|` additive error of Theorem 13.
 //!
 //! Run `cargo run --release --bin dp_annc_experiment -- --help` for the options.
 
@@ -84,8 +85,7 @@ fn run() -> Result<(), String> {
     let queries: usize = args.get("queries", 20)?;
     let neighbours: usize = args.get("neighbours", 2000)?;
     let tightness: f64 = args.get("tightness", 0.95)?;
-    let epsilons: Vec<f64> =
-        args.get_list("epsilons", vec![0.1, 0.25, 0.5, 1., 2., 4., 8.])?;
+    let epsilons: Vec<f64> = args.get_list("epsilons", vec![0.1, 0.25, 0.5, 1., 2., 4., 8.])?;
     let delta: f64 = args.get("delta", 1e-6)?;
     let sensitivity: f64 = args.get("sensitivity", 1.0)?;
     let repeat: usize = args.get("repeat", 5)?;

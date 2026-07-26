@@ -1,17 +1,31 @@
-//! Bucket keys and the Cartesian product enumerated by a tensorized query.
+//! Bucket keys and the Cartesian product a tensorized query covers.
 //!
-//! A query first runs `search` on each of the `t` factors, obtaining the candidate
-//! filter sets `B_1, ..., B_t`, and then inspects every bucket of
-//! `B_1 x ... x B_t` (Algorithm 5, procedure `search`). The product is enumerated
-//! lazily by [`ProbeIter`] so that an ANN query can stop at the first close point
-//! and so that a pathological query never materializes millions of keys.
+//! A query runs `search` on each of the `t` factors, obtaining the candidate filter
+//! sets `B_1, ..., B_t`; Algorithm 5's `search` then returns `B_1 x ... x B_t` and
+//! `query` walks it.
+//!
+//! [`candidate_filters`] and [`product_size`] are on the hot path: the former
+//! produces the `B_i`, the latter reports `|I(q)|` for the experiments (saturating
+//! rather than overflowing, since the product reaches billions).
+//!
+//! [`ProbeIter`], which enumerates the product itself, is **not**. Materializing
+//! `|I(q)|` keys is precisely the cost [`super::bucket_index::BucketIndex`] exists
+//! to avoid. It is kept as the literal transcription of the pseudocode, and serves
+//! as the independent oracle the bucket index is tested against — if the two ever
+//! disagree, the fast path is wrong.
 
 use super::close_top1::FilterSet;
 
-/// Identifier of a bucket: one filter index per factor.
+/// Identifier of a bucket: the `t` filter indices that caught a point, one per
+/// factor. This concatenation is what lets `t * m_sub` stored filters address
+/// `m_sub^t` buckets.
 pub type BucketKey = Vec<u32>;
 
-/// Runs `search` on every factor, returning the candidate filters `B_1, ..., B_t`.
+/// Runs `search` on every factor, returning the candidate filters `B_1, ..., B_t`
+/// (Algorithm 5, `search` lines 2-3).
+///
+/// Each `B_i` comes back sorted ascending, which
+/// [`super::bucket_index::BucketIndex::for_each_match`] requires.
 pub fn candidate_filters<'a, I>(filter_sets: I, query: &[f64]) -> Vec<Vec<u32>>
 where
     I: IntoIterator<Item = &'a FilterSet>,
@@ -22,7 +36,10 @@ where
         .collect()
 }
 
-/// Number of buckets in the Cartesian product of `levels` (saturating).
+/// `|I(q)|`, the number of buckets in `levels[0] x ... x levels[t-1]`.
+///
+/// Saturates at `usize::MAX` instead of overflowing: this product legitimately
+/// reaches billions, and it is only ever reported, never allocated.
 pub fn product_size(levels: &[Vec<u32>]) -> usize {
     levels
         .iter()
@@ -30,10 +47,13 @@ pub fn product_size(levels: &[Vec<u32>]) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-/// Lazy enumeration of `levels[0] x levels[1] x ... x levels[t-1]`.
+/// Lazy enumeration of `levels[0] x levels[1] x ... x levels[t-1]`, in
+/// lexicographic order.
 ///
-/// The iterator yields at most `limit` keys; [`ProbeIter::truncated`] reports
-/// whether the enumeration was cut short.
+/// The reference implementation of Algorithm 5's `search`, used as a test oracle
+/// rather than on the query path — see the module documentation. The iterator
+/// yields at most `limit` keys; [`ProbeIter::truncated`] reports whether the
+/// enumeration was cut short.
 pub struct ProbeIter<'a> {
     levels: &'a [Vec<u32>],
     counter: Vec<usize>,
@@ -106,12 +126,7 @@ mod tests {
         let keys: Vec<BucketKey> = ProbeIter::new(&levels, usize::MAX).collect();
         assert_eq!(
             keys,
-            vec![
-                vec![0, 7, 3],
-                vec![0, 7, 4],
-                vec![1, 7, 3],
-                vec![1, 7, 4],
-            ]
+            vec![vec![0, 7, 3], vec![0, 7, 4], vec![1, 7, 3], vec![1, 7, 4],]
         );
         assert_eq!(product_size(&levels), 4);
     }

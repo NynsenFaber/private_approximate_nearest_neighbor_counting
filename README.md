@@ -1,5 +1,7 @@
 # Approximate Near Neighbour Counting with Differential Privacy
 
+[![CI](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/ci.yml/badge.svg)](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/ci.yml)
+
 A Rust implementation of **TensorCloseTop-1** (Algorithm 5) from
 
 > Martin Aumüller, Fabrizio Boninsegna, Francesco Silvestri.
@@ -24,10 +26,12 @@ ANN search, and the **mean absolute error** of private counting.
 # Rust toolchain (if not already installed)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-cargo test                                   # 45 unit tests
+cargo test                                   # 39 unit tests + 1 doc test
 cargo run --release --bin ann_experiment     # success/failure metric for ANN
 cargo run --release --bin dp_annc_experiment # mean absolute error for DP-ANNC
 ```
+
+Requires Rust 1.82 or newer (`rust-version` in `Cargo.toml`).
 
 Always use `--release`: the debug build is ~18× slower (27.6 s vs 1.5 s on the same
 run). Both experiments generate their own synthetic data, finish in a few seconds
@@ -115,13 +119,18 @@ all other parameters from the paper's formulas:
 
 | `n` | `t` | `m_sub` | build | success rate | `\|I(q)\|` | buckets visited | query |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 10 000 | 3 | 145 | 0.04 s | 0.685 ± 0.033 | 17 455 | 54.6 | 0.094 ms |
-| 100 000 | 3 | 502 | 0.94 s | 0.745 ± 0.031 | 318 554 | 278.1 | 0.910 ms |
-| 1 000 000 | 3 | 1 741 | 29.2 s | 0.820 ± 0.027 | 5 552 064 | 1 326.4 | 7.300 ms |
+| 10 000 | 3 | 145 | 0.05 s | 0.685 ± 0.033 | 17 455 | 54.6 | 0.104 ms |
+| 100 000 | 3 | 502 | 0.94 s | 0.745 ± 0.031 | 318 554 | 278.1 | 1.020 ms |
+| 1 000 000 | 3 | 1 741 | 31.9 s | 0.820 ± 0.027 | 5 552 064 | 1 326.4 | 7.196 ms |
 
 `|I(q)|` is the size of the Cartesian product the query covers; "buckets visited"
 counts the non-empty ones actually opened, which for search also stops at the first
 close point found.
+
+Everything except the timings is deterministic given `--seed`: success rates,
+`|I(q)|`, buckets visited and the memory figures reproduce bit-for-bit. Wall-clock
+numbers move by roughly ±10% between runs on the same machine, so the *ratios*
+below, not the absolute milliseconds, are the meaningful quantity.
 
 The success rate grows with `n`, as the `1 - o(1)` guarantee of Lemma 17 predicts,
 and is still visibly short of 1 at `n = 10^6` — see *Finite-`n` behaviour* below.
@@ -142,11 +151,11 @@ enters either measurement):
 | `n` | `\|I(q)\|` | ANN query | points scanned | linear query | speedup |
 | ---: | ---: | ---: | ---: | ---: | ---: |
 | 100 | 79 | 0.008 ms | 52.5 | 0.006 ms | 0.7× (linear wins) |
-| 200 | 107 | 0.008 ms | 99.6 | 0.008 ms | 1.0× |
+| 200 | 113 | 0.010 ms | 96.7 | 0.011 ms | 1.0× |
 | 800 | 617 | 0.017 ms | 407.6 | 0.034 ms | 2.0× |
-| 10 000 | 17 455 | 0.094 ms | 4 917 | 0.467 ms | 5.0× |
-| 100 000 | 318 554 | 0.910 ms | 43 880 | 8.608 ms | 9.5× |
-| 1 000 000 | 5 552 064 | 7.300 ms | 317 934 | 70.510 ms | 9.7× |
+| 10 000 | 17 455 | 0.104 ms | 4 917 | 0.505 ms | 4.9× |
+| 100 000 | 318 554 | 1.020 ms | 43 880 | 8.843 ms | 8.7× |
+| 1 000 000 | 5 552 064 | 7.196 ms | 317 934 | 71.034 ms | 9.9× |
 
 The **crossover is at `n ≈ 200`** for this `(α, β) = (0.7, 0.4)`, `d = 128` setup.
 Past it TensorCloseTop-1 wins by a growing margin, 5–10× in the tested range,
@@ -161,7 +170,7 @@ Two things make this comparison fair rather than flattering, and both matter:
   the background, so in storage order they would all sit at the very end and the
   scan would have to walk the entire data set before reaching one. That is a worst
   case layout, not a representative one, and it inflated the measured speedup by
-  roughly 2× (at `n = 10⁵`: 12.7× before, 9.5× after). `generate` now shuffles once
+  roughly 2× (at `n = 10⁵`: 12.7× before, ~9× after). `generate` now shuffles once
   with a seeded RNG, so a match sits at a uniformly random position and the scan
   stops after `≈ n/2` points as it should. The structure is indifferent to the
   order — the success rates are bit-for-bit identical either way — so this only
@@ -296,6 +305,32 @@ this case asymptotically. This does not affect privacy in any way: the point sti
 occupies exactly one bucket, so the sensitivity stays 1. Use `--strict` (or
 `Config { fallback_to_argmax: false, .. }`) for the literal algorithm.
 
+### Erratum: the constant in Lemma 24
+
+While checking the implementation against the paper, the gap above turned out to be
+larger than Lemma 24 allows, which traces back to a typesetting error.
+
+Lemma 24 states `Pr[Z ∈ (a, b)] ≥ (2√π/3)·log m / m`. At `m = 502` that reads
+`0.0146`, while the true probability is `0.00278` — the stated *lower* bound is
+about 5× larger than the quantity it bounds, so as printed it is false.
+
+The cause is Proposition 22 (and Proposition 21 it derives from), which carries
+`√(2π)` in the **numerator** where the Gaussian tail bound it cites
+([Birnbaum's inequality](https://doi.org/10.1214/aoms/1177730243)) has it in the
+denominator. At `t = 2.75` the printed lower bound gives `0.0129` against a true
+tail of `0.00299` — again false — while the corrected form gives `0.00205`, which is
+a valid bound. The error is exactly a factor `2π` on both sides of both
+propositions.
+
+Nothing downstream changes qualitatively: `Pr[Z ∈ (a,b)] = Ω(log m / m)` still
+holds, so Lemma 23's `1 - m^{-Ω(1)}` collision probability and every result built on
+it stand, with different constants. **No code is affected** — the implementation
+computes the true Gaussian tail via `erfc` ([`utils::normal_sf`](src/utils.rs)) and
+never uses these bounds. But the practical consequence is precisely the row above:
+the true per-filter acceptance probability is ~5× smaller than the printed lemma
+suggests, which is why `--strict` stores only 42.6 % of the points at `n = 10⁵`
+instead of the near-certainty the asymptotic statement implies.
+
 ## Memory overhead
 
 Both experiments print a `memory:` line after the build, breaking the structure's
@@ -380,27 +415,23 @@ real but small** — under 9% here — and split two ways:
 ## Repository layout
 
 ```
+.github/workflows/ci.yml        build, test, lint and smoke-run the experiments
 src/
-  lib.rs                        module tree
+  lib.rs                        module tree and crate level documentation
   utils.rs                      inner products, thresholds, sphere sampling, Gaussian tails
-  data.rs                       synthetic data sets and brute force ground truth
+  data.rs                       synthetic data sets, brute force ground truth, linear baseline
   cli.rs                        dependency free --key value parsing
-  checks.rs                     input validation (used by the legacy structures)
   dp/truncated_laplace.rs       (eps, delta)-DP mechanism and sparse histogram release
   tensor_data_structures/
     close_top1.rs               one CloseTop-1 factor (Algorithm 4) + FilterSet
     tensor_close_top1.rs        TensorCloseTop-1 (Algorithm 5), ANN + exact counting
     dp_annc.rs                  the published private counting structure
     bucket_index.rs             sorted bucket index used by queries
-    probe.rs                    bucket keys and naive Cartesian enumeration
-    top1.rs, tensor_top1.rs, query.rs      earlier Top-1 based tensorized structure
-  simple_data_structures/       earlier non-tensorized Top-1 / CloseTop-1
+    probe.rs                    bucket keys, |I(q)|, and the naive enumeration oracle
   bin/
     ann_experiment.rs           success/failure metric
     dp_annc_experiment.rs       mean absolute error metric
     generate_data.rs            writes a data set to disk
-    top1.rs, close_top1.rs, tensor_top1.rs   drivers for the earlier structures,
-                                             with hard-coded parameters
 ```
 
 ## Tests
@@ -409,11 +440,37 @@ src/
 cargo test
 ```
 
-45 unit tests, covering: the truncated Laplace support/mean and the fact that
-singleton buckets are always suppressed; the collision band and the fact that every
-stored point really lies inside it; the partition property (no point in two
-buckets) that the sensitivity argument depends on; the equivalence of the fast
-bucket index with naive Cartesian enumeration; the decomposition of a count into
-near and far points; that a private estimate stays within its error bound; and the
-geometry of the data generator, including that planted points are shuffled
-through the data set rather than parked at its end.
+39 unit tests plus one doc test, covering: the truncated Laplace support/mean and
+the fact that singleton buckets are always suppressed; the collision band, the
+query threshold `η` and the fact that every stored point really lies inside the
+band; that `η` and the band are derived from the *per factor* `m_sub` and not from
+the `m_sub^t` simulated total, as Algorithm 5 line 9 requires; the partition
+property (no point in two buckets) that the sensitivity argument depends on; the
+equivalence of the fast bucket index with naive Cartesian enumeration; the
+decomposition of a count into near and far points; that a private estimate stays
+within its error bound; and the geometry of the data generator, including that
+planted points are shuffled through the data set rather than parked at its end.
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull
+request to `master`:
+
+| Job | What it does |
+| --- | --- |
+| `test` | `cargo build` + `cargo test --release` + doc tests, on Linux and macOS, with `RUSTFLAGS=-D warnings`. A pinned 1.82 job guards the MSRV; a `beta` job warns about upstream breakage without blocking. |
+| `lint` | `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo doc` with `RUSTDOCFLAGS=-D warnings`. |
+| `smoke` | Runs all three binaries end to end at tiny sizes (`n = 2000`, `d = 32`), including a `generate_data` → `ann_experiment --data` round trip. |
+
+The smoke job checks that the experiments still run and agree with their own brute
+force ground truth; it deliberately does not try to reproduce the published tables,
+which need `n = 10⁶` and a quiet machine.
+
+To reproduce the numbers above locally:
+
+```bash
+cargo run --release --bin ann_experiment     -- --n 10000   --seed 1
+cargo run --release --bin ann_experiment     -- --n 100000  --seed 1
+cargo run --release --bin ann_experiment     -- --n 1000000 --seed 1   # ~1.5 GB, ~1 min
+cargo run --release --bin dp_annc_experiment -- --seed 1
+```

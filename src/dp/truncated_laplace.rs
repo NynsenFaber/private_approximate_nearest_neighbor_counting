@@ -34,8 +34,11 @@ pub struct TruncatedLaplace {
 impl TruncatedLaplace {
     /// Calibrates the mechanism to `(epsilon, delta)`-DP for the given sensitivity.
     pub fn new(epsilon: f64, delta: f64, sensitivity: f64) -> Result<Self, String> {
-        if !(epsilon > 0.0) || !epsilon.is_finite() {
-            return Err(format!("epsilon must be finite and positive, got {epsilon}"));
+        // NaN fails every comparison, so testing the positive form also rejects it.
+        if !(epsilon.is_finite() && epsilon > 0.0) {
+            return Err(format!(
+                "epsilon must be finite and positive, got {epsilon}"
+            ));
         }
         if !(delta > 0.0 && delta < 1.0) {
             return Err(format!(
@@ -43,7 +46,7 @@ impl TruncatedLaplace {
                  pure DP - got {delta}"
             ));
         }
-        if !(sensitivity > 0.0) || !sensitivity.is_finite() {
+        if !(sensitivity.is_finite() && sensitivity > 0.0) {
             return Err(format!(
                 "sensitivity must be finite and positive, got {sensitivity}"
             ));

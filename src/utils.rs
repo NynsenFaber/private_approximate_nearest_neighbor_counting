@@ -1,11 +1,23 @@
+//! Shared numeric helpers: inner products, sphere/Gaussian sampling, the
+//! thresholds of Algorithms 4 and 5, and the normal tail used for reporting.
+//!
+//! Everything random here is *seeded*: a value derived from the caller's master
+//! seed through [`derive_seed`] drives each independent draw, so results do not
+//! depend on how rayon happens to schedule the work.
+
 use rand::distributions::Distribution;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rand_distr::Normal;
 use rayon::prelude::*;
-use std::io;
 
-/// Computes the dot product of two vectors.
+/// Inner product of two equal-length vectors.
+///
+/// For unit vectors this is the cosine similarity, which is the only notion of
+/// "close" used in this crate. Extra trailing entries of the longer slice are
+/// ignored, so callers are responsible for passing matching dimensions —
+/// [`crate::tensor_data_structures::tensor_close_top1::TensorCloseTop1::build`]
+/// checks this once, up front.
 pub fn dot_product(vec1: &[f64], vec2: &[f64]) -> f64 {
     vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum()
 }
@@ -24,90 +36,38 @@ pub fn derive_seed(seed: u64, stream: u64) -> u64 {
     z ^ (z >> 31)
 }
 
-/// Generates n random Normal Gaussian vectors of dimension d.
-pub fn generate_normal_gaussian_vectors(n: usize, d: usize) -> Result<Vec<Vec<f64>>, io::Error> {
-    // Step 1: Define the normal distribution with mean 0 and standard deviation sigma
-    let normal = Normal::new(0.0, 1.0).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("Failed to create normal distribution: {}", e),
-        )
-    })?;
-
-    // Step 2: Generate N random Gaussian vectors of dimension d
-    let mut vectors = Vec::with_capacity(n);
-    for _ in 0..n {
-        let vector: Vec<f64> = (0..d)
-            .map(|_| normal.sample(&mut rand::thread_rng()))
-            .collect();
-        vectors.push(vector);
-    }
-
-    // Return the generated vectors
-    Ok(vectors)
-}
-
-/// Generates n random Normal Gaussian vectors of dimension d.
-pub fn generate_normal_gaussian_vectors_parallel(n: usize, d: usize) -> Result<Vec<Vec<f64>>, io::Error> {
-    // Step 1: Define the normal distribution with mean 0 and standard deviation sigma
-    let normal = Normal::new(0.0, 1.0).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("Failed to create normal distribution: {}", e),
-        )
-    })?;
-
-    // Step 2: Generate N random Gaussian vectors of dimension d in parallel
-    let vectors: Vec<Vec<f64>> = (0..n).into_par_iter()
-        .map(|_| {
-            (0..d)
-                .map(|_| normal.sample(&mut rand::thread_rng()))
-                .collect()
-        })
-        .collect();
-
-    // Return the generated vectors
-    Ok(vectors)
-}
-
-/// Helper function to check if a vector is normalized.
-pub fn is_normalized(vector: &Vec<f64>) -> bool {
+/// `true` if `vector` lies on the unit sphere up to a `1e-6` tolerance.
+pub fn is_normalized(vector: &[f64]) -> bool {
     let norm = vector.iter().map(|x| x * x).sum::<f64>();
     (norm - 1.0).abs() <= 1e-6
 }
 
-/// Normalizes a vector to have unit length.
-pub fn normalize_vector(vector: &mut Vec<f64>) {
+/// Scales `vector` in place to unit length.
+///
+/// A zero vector would divide by zero; every caller here samples from a
+/// continuous distribution, where that has probability zero.
+pub fn normalize_vector(vector: &mut [f64]) {
     let norm: f64 = vector.iter().map(|x| x.powi(2)).sum::<f64>().sqrt();
-    for i in 0..vector.len() {
-        vector[i] /= norm;
+    for value in vector.iter_mut() {
+        *value /= norm;
     }
 }
 
-/// Helper function to find a close vector in a list of vectors.
-pub fn find_close_vector(query: &Vec<f64>, vectors: &Vec<Vec<f64>>, beta: f64) -> Option<Vec<f64>> {
-    for vector in vectors {
-        if dot_product(query, vector) >= beta {
-            return Some(vector.clone());
-        }
-    }
-    None
-}
-
-/// Query threshold `eta = alpha * sqrt(2 log m) - sqrt(2 (1 - alpha^2) log log m)`.
+/// Query threshold `eta = alpha * sqrt(2 log m) - sqrt(2 (1 - alpha^2) log log m)`
+/// (Algorithm 4 line 10, Algorithm 5 line 9).
 ///
 /// A filter (Gaussian vector) `a` is inspected by a query `q` if `<a, q> >= eta`.
 /// The value follows from the theory of concomitant order statistics: a point at
 /// inner product `alpha` from `q` is associated to a filter whose inner product with
 /// `q` is distributed as `N(alpha * sqrt(2 log m), 1 - alpha^2)`, and `eta` sits
 /// `sqrt(2 log log m)` standard deviations below that mean.
+///
+/// In the tensorized structure `m` is the *per factor* count `m_sub`, not the
+/// `m_sub^t` simulated total: Algorithm 5 line 9 computes `eta` from `m̃`.
 pub fn get_threshold(alpha: f64, m: usize) -> f64 {
     let ln_m = (m as f64).ln();
     let ln_ln_m = ln_m.ln();
-    let first_term = alpha * (2. * ln_m).sqrt();
-    let second_term = -(2. * (1. - alpha.powi(2)) * ln_ln_m).sqrt();
-    let threshold = first_term + second_term;
-    threshold
+    alpha * (2. * ln_m).sqrt() - (2. * (1. - alpha.powi(2)) * ln_ln_m).sqrt()
 }
 
 /// Collision band of CloseTop-1 (Algorithm 4, line 7).
@@ -187,12 +147,9 @@ pub fn generate_normal_gaussian_vectors_seeded(m: usize, d: usize, seed: u64) ->
 
 #[cfg(test)]
 mod tests {
-
-    #[allow(unused_imports)]
     use super::*;
 
-    /// Test function to check if the dot product function works.
-    /// The test checks if the dot product of two vectors is computed correctly.
+    /// The inner product must agree with the textbook definition.
     #[test]
     fn test_dot_product() {
         let vec1 = vec![1.0, 2.0, 3.0];
@@ -206,18 +163,7 @@ mod tests {
         assert_eq!(result, 0.5);
     }
 
-    /// Test function to check if the generate_gaussian_vectors function works.
-    /// The test checks if the generated vectors have the correct length and dimension.
-    #[test]
-    fn test_generate_gaussian_vectors() {
-        let n = 10;
-        let d = 5;
-        let vectors = generate_normal_gaussian_vectors(n, d).unwrap();
-        assert_eq!(vectors.len(), n);
-        assert_eq!(vectors[0].len(), d);
-    }
-
-    /// Test function to check if the normalize_vector function works.
+    /// Normalizing must produce a unit vector.
     #[test]
     fn test_normalize_vector() {
         let mut vector = vec![1.0, 2.0, 3.0];
@@ -241,16 +187,38 @@ mod tests {
         assert!((normal_sf(3.0) - 0.001350).abs() < 1e-5);
     }
 
-    /// The collision band must sit just below `sqrt(2 log m)` and be non-empty.
+    /// The collision band must be exactly Algorithm 4 line 7:
+    /// `[sqrt(2 log m) - (3/2) log log m / sqrt(2 log m), sqrt(2 log m)]`.
     #[test]
     fn test_collision_band() {
         for m in [16usize, 100, 10_000, 1_000_000] {
             let (lower, upper) = collision_band(m);
-            assert!(lower < upper, "empty band for m = {}", m);
-            assert!((upper - (2. * (m as f64).ln()).sqrt()).abs() < 1e-12);
-            // The band shrinks (relatively) as m grows, but stays a constant factor away.
+            let ln_m = (m as f64).ln();
+            let expected_upper = (2. * ln_m).sqrt();
+            let expected_lower = expected_upper - 1.5 * ln_m.ln() / expected_upper;
+            assert!((upper - expected_upper).abs() < 1e-12, "m = {m}");
+            assert!((lower - expected_lower).abs() < 1e-12, "m = {m}");
+            assert!(lower < upper, "empty band for m = {m}");
             assert!(lower > 0.0);
         }
+    }
+
+    /// The query threshold must be exactly Algorithm 5 line 9:
+    /// `eta = alpha sqrt(2 log m) - sqrt(2 (1 - alpha^2) log log m)`.
+    #[test]
+    fn test_query_threshold_matches_the_paper() {
+        for m in [16usize, 502, 10_000] {
+            for alpha in [0.5, 0.7, 0.9] {
+                let ln_m = (m as f64).ln();
+                let expected =
+                    alpha * (2. * ln_m).sqrt() - (2. * (1. - alpha * alpha) * ln_m.ln()).sqrt();
+                assert!((get_threshold(alpha, m) - expected).abs() < 1e-12);
+            }
+        }
+        // eta must sit below the collision band: a query has to be able to reach the
+        // filters that points were assigned to, otherwise nothing is ever found.
+        let (lower, _) = collision_band(502);
+        assert!(get_threshold(0.7, 502) < lower);
     }
 
     /// Unit sphere sampling must produce normalized vectors and be reproducible.

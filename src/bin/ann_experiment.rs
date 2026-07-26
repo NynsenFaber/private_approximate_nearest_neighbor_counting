@@ -101,6 +101,8 @@ fn run() -> Result<(), String> {
     let mut linear_time = 0f64;
     let mut linear_scanned = 0f64;
     let mut stored_fraction = 0f64;
+    let mut context_near = 0f64;
+    let mut context_far = 0f64;
 
     for round in 0..repeat {
         let round_seed = seed.wrapping_add(round as u64);
@@ -117,7 +119,11 @@ fn run() -> Result<(), String> {
         };
         let dataset = match args.get_string("data") {
             Some(path) => {
-                println!("[round {}/{}] loading the data set from {path}...", round + 1, repeat);
+                println!(
+                    "[round {}/{}] loading the data set from {path}...",
+                    round + 1,
+                    repeat
+                );
                 load(path).map_err(|e| e.to_string())?
             }
             None => {
@@ -166,6 +172,11 @@ fn run() -> Result<(), String> {
         );
         if round == 0 {
             println!("memory:         {}", structure.memory_footprint().summary());
+            // How many points a query may legitimately be answered with, measured on
+            // the data set actually under test rather than on a freshly generated one.
+            let sample = &dataset.queries[0];
+            context_near = exact_count(&dataset.points, sample, alpha) as f64;
+            context_far = exact_count(&dataset.points, sample, beta) as f64;
         }
         stored_fraction += structure.stored_points() as f64 / n as f64;
 
@@ -183,16 +194,13 @@ fn run() -> Result<(), String> {
             probed_buckets += outcome.probed_buckets as f64;
             matched_buckets += outcome.matched_buckets as f64;
             inspected_points += outcome.inspected_points as f64;
-            match outcome.point {
-                Some(point) => {
-                    let similarity = dot_product(query, structure.point(point));
-                    assert!(
-                        similarity >= beta,
-                        "the structure returned a point at inner product {similarity} < beta"
-                    );
-                    successes += 1;
-                }
-                None => {}
+            if let Some(point) = outcome.point {
+                let similarity = dot_product(query, structure.point(point));
+                assert!(
+                    similarity >= beta,
+                    "the structure returned a point at inner product {similarity} < beta"
+                );
+                successes += 1;
             }
 
             if run_linear {
@@ -260,27 +268,9 @@ fn run() -> Result<(), String> {
         }
     }
 
-    if args.has("data") {
-        return Ok(());
-    }
-
-    // For context: how many points a query may legitimately be answered with.
-    let generator = GeneratorConfig {
-        n,
-        d,
-        queries: 1,
-        plant: PlantConfig {
-            count: neighbours,
-            similarity: alpha,
-            tightness,
-        },
-        seed,
-    };
-    let sample = generate(&generator)?;
     println!(
-        "context:        a query has {} point(s) at inner product >= alpha and {} at >= beta",
-        exact_count(&sample.points, &sample.queries[0], alpha),
-        exact_count(&sample.points, &sample.queries[0], beta)
+        "context:        a query has {:.1} point(s) at inner product >= alpha and {:.1} at >= beta",
+        context_near, context_far
     );
 
     Ok(())

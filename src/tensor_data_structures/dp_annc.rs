@@ -17,6 +17,23 @@
 //!
 //! A query sums the released counters over the inspected buckets, so its additive
 //! error is at most `A * |I(q)|`, matching Theorem 13 with `K = E[|I(q)|]`.
+//!
+//! # Two deviations from the paper, both deliberate
+//!
+//! **Sparse release.** Theorem 13 noises all `m` counters. Here `m = m_sub^t` is
+//! `5.3e9` at `n = 10^6`, so only the non-empty buckets are noised and stored, and a
+//! bucket is dropped unless its noisy value exceeds `1 + A`. That threshold is what
+//! keeps the released *key set* private, and it is sound precisely because the
+//! truncated Laplace noise is *bounded*: a bucket holding one point is noised to at
+//! most `1 + A`, so it is suppressed with certainty, whether or not that point is
+//! in the data set. Everything else is post-processing of an `(epsilon, delta)`-DP
+//! value. See [`crate::dp::truncated_laplace::TruncatedLaplace::suppression_threshold`].
+//!
+//! **Budget range.** Theorem 13 is stated for `epsilon <= 1`, which is what its
+//! `O(log(1/delta)/epsilon)` error form assumes. The mechanism itself is
+//! `(epsilon, delta)`-DP at any `epsilon > 0` (Geng et al.), so larger budgets are
+//! accepted and reported; the experiments sweep up to `epsilon = 8` to show where
+//! the private answer meets the non-private accuracy floor of the same partition.
 
 use super::bucket_index::BucketIndex;
 use super::close_top1::FilterSet;
@@ -156,7 +173,10 @@ mod tests {
         let error = (noisy.estimate - exact.count as f64).abs();
         let bound = private.error_bound(exact.matched_buckets)
             + private.mechanism.suppression_threshold() * exact.matched_buckets as f64;
-        assert!(error <= bound + 1e-9, "error {error} exceeds the bound {bound}");
+        assert!(
+            error <= bound + 1e-9,
+            "error {error} exceeds the bound {bound}"
+        );
     }
 
     /// A larger privacy budget means less noise, hence a smaller error bound and,
@@ -185,7 +205,10 @@ mod tests {
         let occupied = structure.occupied_buckets();
         let mechanism = TruncatedLaplace::new(1.0, 1e-6, 1.0).unwrap();
         let private = structure.into_private(mechanism, 206);
-        assert_eq!(private.released_buckets() + private.suppressed_buckets, occupied);
+        assert_eq!(
+            private.released_buckets() + private.suppressed_buckets,
+            occupied
+        );
         // Every released counter is above the suppression threshold.
         for (_, value) in private.noisy_counts.iter() {
             assert!(*value > private.mechanism.suppression_threshold());
