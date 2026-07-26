@@ -9,7 +9,7 @@ description = "Locality sensitive filters for approximate near neighbour search 
 
 [dependencies]
 rand_distr = "0.4.3"
-rand = "0.8.5"
+rand = "0.8.6"
 savefile = "0.18"
 savefile-derive = "0.18"
 rayon = "1.10.0"
