@@ -86,6 +86,17 @@ impl<V> BucketIndex<V> {
         keys_bytes + values_bytes
     }
 
+    /// Replaces every payload with `f(payload)`, keeping the keys and their order.
+    ///
+    /// Used to turn the point lists of an ANN structure into the counters of an
+    /// ANNC structure (Algorithm 3) without sorting the keys again.
+    pub fn map<W>(self, f: impl FnMut(V) -> W) -> BucketIndex<W> {
+        BucketIndex {
+            keys: self.keys,
+            values: self.values.into_iter().map(f).collect(),
+        }
+    }
+
     /// Iterates over all stored buckets.
     pub fn iter(&self) -> impl Iterator<Item = (&BucketKey, &V)> {
         self.keys.iter().zip(self.values.iter())
@@ -108,7 +119,7 @@ impl<V> BucketIndex<V> {
     /// without ever materializing that product.
     ///
     /// `levels[i]` must be sorted ascending, which is how
-    /// [`super::close_top1::FilterSet::search`] produces it. `visit` returns `false`
+    /// [`super::filters::FilterSet::search`] produces it. `visit` returns `false`
     /// to stop the traversal early (used by ANN search as soon as a close point is
     /// found). Returns the number of buckets visited, which is the `V` of the module
     /// level cost discussion — typically orders of magnitude below `|I(q)|`.
@@ -188,7 +199,7 @@ impl<V> BucketIndex<V> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tensor_data_structures::probe::ProbeIter;
+    use crate::lsf::probe::ProbeIter;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
 
@@ -245,7 +256,7 @@ mod tests {
                 });
                 visited.sort();
 
-                let mut expected: Vec<BucketKey> = ProbeIter::new(&levels, usize::MAX)
+                let mut expected: Vec<BucketKey> = ProbeIter::new(&levels)
                     .filter(|key| index.get(key).is_some())
                     .collect();
                 expected.sort();

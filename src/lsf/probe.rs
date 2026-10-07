@@ -14,7 +14,7 @@
 //! as the independent oracle the bucket index is tested against — if the two ever
 //! disagree, the fast path is wrong.
 
-use super::close_top1::FilterSet;
+use super::filters::FilterSet;
 
 /// Identifier of a bucket: the `t` filter indices that caught a point, one per
 /// factor. This concatenation is what lets `t * m_sub` stored filters address
@@ -51,34 +51,23 @@ pub fn product_size(levels: &[Vec<u32>]) -> usize {
 /// lexicographic order.
 ///
 /// The reference implementation of Algorithm 5's `search`, used as a test oracle
-/// rather than on the query path — see the module documentation. The iterator
-/// yields at most `limit` keys; [`ProbeIter::truncated`] reports whether the
-/// enumeration was cut short.
+/// rather than on the query path — see the module documentation.
 pub struct ProbeIter<'a> {
     levels: &'a [Vec<u32>],
     counter: Vec<usize>,
     done: bool,
-    emitted: usize,
-    limit: usize,
 }
 
 impl<'a> ProbeIter<'a> {
-    /// Creates an iterator over the product of `levels`, capped at `limit` keys.
-    pub fn new(levels: &'a [Vec<u32>], limit: usize) -> Self {
+    /// Creates an iterator over the product of `levels`.
+    pub fn new(levels: &'a [Vec<u32>]) -> Self {
         // An empty factor (or no factor at all) makes the product empty.
         let done = levels.is_empty() || levels.iter().any(|level| level.is_empty());
         ProbeIter {
             levels,
             counter: vec![0; levels.len()],
             done,
-            emitted: 0,
-            limit,
         }
-    }
-
-    /// `true` if the enumeration stopped because it reached the cap.
-    pub fn truncated(&self) -> bool {
-        !self.done && self.emitted >= self.limit
     }
 }
 
@@ -86,7 +75,7 @@ impl Iterator for ProbeIter<'_> {
     type Item = BucketKey;
 
     fn next(&mut self) -> Option<BucketKey> {
-        if self.done || self.emitted >= self.limit {
+        if self.done {
             return None;
         }
         let key: BucketKey = self
@@ -111,7 +100,6 @@ impl Iterator for ProbeIter<'_> {
             self.counter[position] = 0;
         }
 
-        self.emitted += 1;
         Some(key)
     }
 }
@@ -123,7 +111,7 @@ mod tests {
     #[test]
     fn test_product_enumeration() {
         let levels = vec![vec![0u32, 1], vec![7u32], vec![3u32, 4]];
-        let keys: Vec<BucketKey> = ProbeIter::new(&levels, usize::MAX).collect();
+        let keys: Vec<BucketKey> = ProbeIter::new(&levels).collect();
         assert_eq!(
             keys,
             vec![vec![0, 7, 3], vec![0, 7, 4], vec![1, 7, 3], vec![1, 7, 4],]
@@ -134,31 +122,18 @@ mod tests {
     #[test]
     fn test_empty_factor_yields_no_bucket() {
         let levels = vec![vec![0u32, 1], Vec::new(), vec![3u32]];
-        let keys: Vec<BucketKey> = ProbeIter::new(&levels, usize::MAX).collect();
+        let keys: Vec<BucketKey> = ProbeIter::new(&levels).collect();
         assert!(keys.is_empty());
         assert_eq!(product_size(&levels), 0);
 
         let no_levels: Vec<Vec<u32>> = Vec::new();
-        assert_eq!(ProbeIter::new(&no_levels, usize::MAX).count(), 0);
-    }
-
-    #[test]
-    fn test_limit_is_respected() {
-        let levels = vec![vec![0u32, 1, 2], vec![0u32, 1, 2]];
-        let mut iterator = ProbeIter::new(&levels, 4);
-        let keys: Vec<BucketKey> = iterator.by_ref().collect();
-        assert_eq!(keys.len(), 4);
-        assert!(iterator.truncated());
-
-        let mut full = ProbeIter::new(&levels, 9);
-        assert_eq!(full.by_ref().count(), 9);
-        assert!(!full.truncated());
+        assert_eq!(ProbeIter::new(&no_levels).count(), 0);
     }
 
     #[test]
     fn test_single_factor() {
         let levels = vec![vec![5u32, 9]];
-        let keys: Vec<BucketKey> = ProbeIter::new(&levels, usize::MAX).collect();
+        let keys: Vec<BucketKey> = ProbeIter::new(&levels).collect();
         assert_eq!(keys, vec![vec![5], vec![9]]);
     }
 }

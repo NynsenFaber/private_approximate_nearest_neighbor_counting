@@ -1,5 +1,6 @@
-//! Mean absolute error experiment for DP-ANNC with TensorCloseTop-1 and the
-//! truncated Laplace mechanism.
+//! Mean absolute error experiment for DP-ANNC with the truncated Laplace mechanism,
+//! with any of the four algorithms of `ann_rust::annc::dp` (TensorCloseTop-1 by
+//! default).
 //!
 //! For every query the exact answer `|S ∩ B(q, alpha)|` is computed by brute force
 //! and compared with the private estimate. Three quantities are reported per
@@ -13,15 +14,21 @@
 //!
 //! Run `cargo run --release --bin dp_annc_experiment -- --help` for the options.
 
-use ann_rust::cli::Args;
+mod common;
+
+use ann_rust::annc::dp::TruncatedLaplace;
+use ann_rust::annc::LsfCounter;
+use ann_rust::anns::LsfIndex;
 use ann_rust::data::{exact_count, generate, load, GeneratorConfig, PlantConfig};
-use ann_rust::dp::truncated_laplace::TruncatedLaplace;
-use ann_rust::tensor_data_structures::tensor_close_top1::{Config, TensorCloseTop1};
+use ann_rust::lsf::{algorithms, Algorithm};
+use ann_rust::Parameters;
+use common::cli::Args;
 use std::process::exit;
 use std::time::Instant;
 
 const OPTIONS: &[&str] = &[
     "help",
+    "algorithm",
     "n",
     "d",
     "alpha",
@@ -42,7 +49,7 @@ const OPTIONS: &[&str] = &[
 ];
 
 const HELP: &str = "\
-Mean absolute error experiment for DP-ANNC with TensorCloseTop-1 and truncated Laplace noise.
+Mean absolute error experiment for DP-ANNC with truncated Laplace noise.
 
 Options (defaults in brackets):
   --n <usize>          number of points in the data set [100000]
@@ -55,10 +62,6 @@ Options (defaults in brackets):
   --epsilons <list>    comma separated privacy budgets [0.1,0.25,0.5,1,2,4,8]
   --delta <f64>        privacy parameter delta, must be > 0 [1e-6]
   --sensitivity <f64>  1 for add/remove neighbouring, 2 for substitution [1]
-  --theta <f64>        space/time knob; default is the balanced rho
-  --t <usize>          concatenation factor; default ceil(log^{1/8}(n) / (1 - alpha^2))
-  --m-sub <usize>      filters per factor; default ceil(n^{(1/t) theta / (1 - alpha^2)})
-  --strict             drop points that collide with no filter (literal Algorithm 4)
   --repeat <usize>     independent noise draws per budget [5]
   --seed <u64>         master seed [1]
   --data <path>        use a data set written by generate_data instead of a fresh one
@@ -74,10 +77,19 @@ fn main() {
 fn run() -> Result<(), String> {
     let args = Args::parse(OPTIONS)?;
     if args.has("help") {
-        println!("{HELP}");
+        println!("{HELP}{}", common::ALGORITHM_HELP);
         return Ok(());
     }
+    match common::algorithm(&args) {
+        "tensor-close-top1" => experiment::<algorithms::TensorCloseTop1>(&args),
+        "tensor-top1" => experiment::<algorithms::TensorTop1>(&args),
+        "close-top1" => experiment::<algorithms::CloseTop1>(&args),
+        "top1" => experiment::<algorithms::Top1>(&args),
+        other => Err(common::unknown_algorithm(other)),
+    }
+}
 
+fn experiment<A: Algorithm>(args: &Args) -> Result<(), String> {
     let n: usize = args.get("n", 100_000)?;
     let d: usize = args.get("d", 128)?;
     let alpha: f64 = args.get("alpha", 0.7)?;
@@ -91,15 +103,7 @@ fn run() -> Result<(), String> {
     let repeat: usize = args.get("repeat", 5)?;
     let seed: u64 = args.get("seed", 1)?;
 
-    let config = Config {
-        alpha,
-        beta,
-        theta: args.get_optional("theta")?,
-        t: args.get_optional("t")?,
-        m_sub: args.get_optional("m-sub")?,
-        fallback_to_argmax: !args.flag("strict", false)?,
-        seed,
-    };
+    let config = common::config(args, alpha, beta, seed)?;
 
     let dataset = match args.get_string("data") {
         Some(path) => {
@@ -139,14 +143,17 @@ fn run() -> Result<(), String> {
         })
         .collect();
 
+    let d = dataset.points.first().map_or(0, |point| point.len());
+    common::check_filter_memory(&Parameters::resolve::<A>(&config, n, d)?)?;
+
     let build_start = Instant::now();
-    let structure = TensorCloseTop1::build(dataset.points.clone(), &config)?;
-    println!("\nParameters\n----------\n{}\n", structure.params.summary());
-    if structure.params.m_sub_was_clamped {
-        println!(
-            "note: m_sub was raised to the smallest usable value; the requested value \
-             was too small for the collision band to exist\n"
-        );
+    let structure = LsfIndex::<A>::build(dataset.points.clone(), &config)?;
+    println!(
+        "\nParameters\n----------\n{}\n",
+        structure.params().summary()
+    );
+    if structure.params().m_sub_was_clamped {
+        println!("{}", common::CLAMPED_NOTE);
     }
     println!(
         "built in {:.2}s: {} of {} points stored ({:.1}%), {} non-empty buckets",
@@ -158,6 +165,9 @@ fn run() -> Result<(), String> {
     );
     println!("memory:      {}", structure.memory_footprint().summary());
 
+    // Algorithm 3: keep the partition, replace every bucket by its size.
+    let counter = LsfCounter::from(structure);
+
     // Non private baseline: the exact answer of the same partition (Algorithm 3).
     let mut baseline_error = 0f64;
     let mut baseline_interval_error = 0f64;
@@ -165,7 +175,7 @@ fn run() -> Result<(), String> {
     let mut probed = 0f64;
     let mut matched = 0f64;
     for (query, &(near, far)) in dataset.queries.iter().zip(truth.iter()) {
-        let outcome = structure.count(query);
+        let outcome = counter.count(query);
         probed += outcome.probed_buckets as f64;
         matched += outcome.matched_buckets as f64;
         baseline_estimate += outcome.count as f64;
@@ -211,7 +221,7 @@ fn run() -> Result<(), String> {
             // The partition is data independent and stays fixed; only the noise is
             // redrawn, which is what averaging over `repeat` releases measures.
             let private =
-                structure.release(mechanism, seed.wrapping_add(1000).wrapping_add(draw as u64));
+                counter.release(mechanism, seed.wrapping_add(1000).wrapping_add(draw as u64));
             for (query, &(near, far)) in dataset.queries.iter().zip(truth.iter()) {
                 let outcome = private.query(query);
                 absolute_error += (outcome.estimate - near as f64).abs();

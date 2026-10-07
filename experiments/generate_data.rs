@@ -4,8 +4,10 @@
 //!
 //! Run `cargo run --release --bin generate_data -- --help` for the options.
 
-use ann_rust::cli::Args;
+mod common;
+
 use ann_rust::data::{generate, save, GeneratorConfig, PlantConfig};
+use common::cli::Args;
 use std::fs::create_dir_all;
 use std::process::exit;
 use std::time::Instant;

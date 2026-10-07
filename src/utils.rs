@@ -16,7 +16,7 @@ use rayon::prelude::*;
 /// For unit vectors this is the cosine similarity, which is the only notion of
 /// "close" used in this crate. Extra trailing entries of the longer slice are
 /// ignored, so callers are responsible for passing matching dimensions —
-/// [`crate::tensor_data_structures::tensor_close_top1::TensorCloseTop1::build`]
+/// [`crate::lsf::partition::Partition::build`]
 /// checks this once, up front.
 pub fn dot_product(vec1: &[f64], vec2: &[f64]) -> f64 {
     vec1.iter().zip(vec2.iter()).map(|(a, b)| a * b).sum()

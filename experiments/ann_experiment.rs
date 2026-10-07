@@ -1,4 +1,5 @@
-//! Success/failure experiment for `(alpha, beta)`-ANN with TensorCloseTop-1.
+//! Success/failure experiment for `(alpha, beta)`-ANN, with any of the four
+//! algorithms of `ann_rust::anns` (TensorCloseTop-1 by default).
 //!
 //! The data set consists of vectors drawn uniformly from the unit sphere plus, for
 //! every query, one planted point at inner product exactly `alpha` from it. A trial
@@ -7,17 +8,22 @@
 //!
 //! Run `cargo run --release --bin ann_experiment -- --help` for the options.
 
-use ann_rust::cli::Args;
+mod common;
+
+use ann_rust::anns::LsfIndex;
 use ann_rust::data::{
     best_similarity, exact_count, generate, linear_search_first, load, GeneratorConfig, PlantConfig,
 };
-use ann_rust::tensor_data_structures::tensor_close_top1::{Config, TensorCloseTop1};
+use ann_rust::lsf::{algorithms, Algorithm};
 use ann_rust::utils::dot_product;
+use ann_rust::{Config, Parameters};
+use common::cli::Args;
 use std::process::exit;
 use std::time::Instant;
 
 const OPTIONS: &[&str] = &[
     "help",
+    "algorithm",
     "n",
     "d",
     "alpha",
@@ -36,7 +42,7 @@ const OPTIONS: &[&str] = &[
 ];
 
 const HELP: &str = "\
-Success/failure experiment for (alpha, beta)-ANN with TensorCloseTop-1.
+Success/failure experiment for (alpha, beta)-ANN.
 
 Options (defaults in brackets):
   --n <usize>          number of points in the data set [100000]
@@ -46,10 +52,6 @@ Options (defaults in brackets):
   --trials <usize>     number of queries, each with its own planted neighbour [200]
   --neighbours <usize> planted points per query [1]
   --tightness <f64>    mutual similarity of the planted points, 0 = independent [0.0]
-  --theta <f64>        space/time knob; default is the balanced rho
-  --t <usize>          concatenation factor; default ceil(log^{1/8}(n) / (1 - alpha^2))
-  --m-sub <usize>      filters per factor; default ceil(n^{(1/t) theta / (1 - alpha^2)})
-  --strict             drop points that collide with no filter (literal Algorithm 4)
   --repeat <usize>     independent rebuilds of the structure, results are pooled [1]
   --seed <u64>         master seed [1]
   --data <path>        use a data set written by generate_data instead of a fresh one
@@ -66,10 +68,19 @@ fn main() {
 fn run() -> Result<(), String> {
     let args = Args::parse(OPTIONS)?;
     if args.has("help") {
-        println!("{HELP}");
+        println!("{HELP}{}", common::ALGORITHM_HELP);
         return Ok(());
     }
+    match common::algorithm(&args) {
+        "tensor-close-top1" => experiment::<algorithms::TensorCloseTop1>(&args),
+        "tensor-top1" => experiment::<algorithms::TensorTop1>(&args),
+        "close-top1" => experiment::<algorithms::CloseTop1>(&args),
+        "top1" => experiment::<algorithms::Top1>(&args),
+        other => Err(common::unknown_algorithm(other)),
+    }
+}
 
+fn experiment<A: Algorithm>(args: &Args) -> Result<(), String> {
     let n: usize = args.get("n", 100_000)?;
     let d: usize = args.get("d", 128)?;
     let alpha: f64 = args.get("alpha", 0.7)?;
@@ -80,16 +91,7 @@ fn run() -> Result<(), String> {
     let repeat: usize = args.get("repeat", 1)?;
     let seed: u64 = args.get("seed", 1)?;
     let run_linear = !args.flag("no-linear", false)?;
-
-    let config = Config {
-        alpha,
-        beta,
-        theta: args.get_optional("theta")?,
-        t: args.get_optional("t")?,
-        m_sub: args.get_optional("m-sub")?,
-        fallback_to_argmax: !args.flag("strict", false)?,
-        seed,
-    };
+    let config = common::config(args, alpha, beta, seed)?;
 
     let mut successes = 0usize;
     let mut queries_run = 0usize;
@@ -140,24 +142,24 @@ fn run() -> Result<(), String> {
             }
         };
         let n = dataset.points.len();
+        let round_config = Config {
+            seed: round_seed,
+            ..config.clone()
+        };
+        let d = dataset.points.first().map_or(0, |point| point.len());
+        common::check_filter_memory(&Parameters::resolve::<A>(&round_config, n, d)?)?;
 
         let build_start = Instant::now();
-        let structure = TensorCloseTop1::build(
-            dataset.points.clone(),
-            &Config {
-                seed: round_seed,
-                ..config.clone()
-            },
-        )?;
+        let structure = LsfIndex::<A>::build(dataset.points.clone(), &round_config)?;
         let build_seconds = build_start.elapsed().as_secs_f64();
 
         if round == 0 {
-            println!("\nParameters\n----------\n{}\n", structure.params.summary());
-            if structure.params.m_sub_was_clamped {
-                println!(
-                    "note: m_sub was raised to the smallest usable value; the requested \
-                     value was too small for the collision band to exist\n"
-                );
+            println!(
+                "\nParameters\n----------\n{}\n",
+                structure.params().summary()
+            );
+            if structure.params().m_sub_was_clamped {
+                println!("{}", common::CLAMPED_NOTE);
             }
         }
         println!(
@@ -257,13 +259,15 @@ fn run() -> Result<(), String> {
         );
         if mean_ann_ms < mean_linear_ms {
             println!(
-                "comparison:     TensorCloseTop1 is {:.1}x faster than the linear scan",
+                "comparison:     {} is {:.1}x faster than the linear scan",
+                A::NAME,
                 mean_linear_ms / mean_ann_ms
             );
         } else {
             println!(
-                "comparison:     the linear scan is {:.1}x faster than TensorCloseTop1 at this n",
-                mean_ann_ms / mean_linear_ms
+                "comparison:     the linear scan is {:.1}x faster than {} at this n",
+                mean_ann_ms / mean_linear_ms,
+                A::NAME
             );
         }
     }

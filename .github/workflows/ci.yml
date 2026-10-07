@@ -59,8 +59,9 @@ jobs:
       - name: Doc tests
         run: cargo test --release --doc --verbose
 
+  # Clippy runs in its own workflow (clippy.yml) so that it has its own badge.
   lint:
-    name: fmt + clippy + docs
+    name: rustfmt + docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,20 +69,45 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Formatting
         run: cargo fmt --all -- --check
 
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
-
       - name: Documentation builds without warnings
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --no-deps --document-private-items
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      # Unit, integration and binary tests, in release like the `test` job. Doc
+      # tests need a nightly toolchain to be instrumented, so they are left out.
+      - name: Measure coverage
+        run: cargo llvm-cov --release --all-targets --lcov --output-path lcov.info
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   smoke:
     name: experiments run end to end
@@ -105,7 +131,47 @@ jobs:
           cargo run --release --bin dp_annc_experiment --
           --n 2000 --d 32 --queries 5 --neighbours 200 --epsilons 1,8 --repeat 2 --seed 1
 
+      - name: The other three algorithms
+        run: |
+          for algorithm in tensor-top1 close-top1 top1; do
+            cargo run --release --bin ann_experiment -- --algorithm $algorithm \
+              --n 2000 --d 32 --trials 20 --m-sub 256 --seed 1
+            cargo run --release --bin dp_annc_experiment -- --algorithm $algorithm \
+              --n 2000 --d 32 --queries 5 --neighbours 200 --epsilons 1,8 --repeat 2 \
+              --m-sub 256 --seed 1
+          done
+
       - name: Data generation round trip
         run: |
           cargo run --release --bin generate_data -- --n 2000 --d 32 --queries 5 --out data/ci.bin
           cargo run --release --bin ann_experiment -- --data data/ci.bin --no-linear
+
+  readmes:
+    # Each algorithm's README.md is generated from the rustdoc of its type. Pull
+    # requests are checked by the `algorithm_readmes` test in the `test` job; on
+    # master this job regenerates the READMEs and commits them if they changed.
+    name: regenerate algorithm READMEs
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Regenerate from the rustdoc
+        run: UPDATE_READMES=1 cargo test --test algorithm_readmes
+
+      - name: Commit the READMEs if they changed
+        run: |
+          if [ -n "$(git status --porcelain -- 'src/*README.md')" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- 'src/*README.md'
+            git commit -m "docs: regenerate algorithm READMEs from rustdoc"
+            git push
+          fi

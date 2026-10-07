@@ -4,37 +4,74 @@
 //! Approximate Range Counting, Revisited" (FORC 2025)*,
 //! [doi:10.4230/LIPIcs.FORC.2025.15](https://doi.org/10.4230/LIPIcs.FORC.2025.15).
 //!
-//! # What is implemented
+//! # The four algorithms, three ways
 //!
-//! | Paper | Here |
+//! | Algorithm | Search ([`anns`]) | Counting ([`annc`]) | Private counting ([`annc::dp`]) |
+//! | --- | --- | --- | --- |
+//! | Top-1 (Algorithm 2) | [`anns::Top1`] | [`annc::Top1Counter`] | [`annc::dp::DpTop1`] (Algorithm 1) |
+//! | CloseTop-1 (Algorithm 4) | [`anns::CloseTop1`] | [`annc::CloseTop1Counter`] | [`annc::dp::DpCloseTop1`] |
+//! | TensorCloseTop-1 (Algorithm 5) | [`anns::TensorCloseTop1`] | [`annc::TensorCloseTop1Counter`] | [`annc::dp::DpTensorCloseTop1`] |
+//! | TensorTop-1 | [`anns::TensorTop1`] | [`annc::TensorTop1Counter`] | [`annc::dp::DpTensorTop1`] |
+//!
+//! The counting structures are Algorithm 3 applied to the search structures, and the
+//! private ones are Theorem 13 (truncated Laplace noise) applied to the counting
+//! ones. Every structure is built from a [`Config`].
+//!
+//! # Input data
+//!
+//! A data set is a `Vec<Vec<f64>>` (search structures take ownership, counting
+//! structures borrow `&[Vec<f64>]`): one vector per point, as many as you have, all
+//! of the same dimension. Similarity is the **inner product of unit vectors**
+//! (cosine similarity), so `alpha` and `beta` are cosine thresholds. `build` checks
+//! the data set first ([`lsf::input`]):
+//!
+//! | Data set | Result |
 //! | --- | --- |
-//! | Algorithm 4, `CloseTop-1` | [`tensor_data_structures::close_top1::CloseTop1`] |
-//! | Algorithm 5, `TensorCloseTop-1` | [`tensor_data_structures::tensor_close_top1::TensorCloseTop1`] |
-//! | Algorithm 3, ANN to ANNC | [`tensor_data_structures::tensor_close_top1::TensorCloseTop1::count`] |
-//! | Theorem 13, DP-ANNC | [`tensor_data_structures::dp_annc::DpAnnc`] |
-//! | Truncated Laplace | [`dp::truncated_laplace::TruncatedLaplace`] |
+//! | empty, or zero-dimensional points | `Err` |
+//! | points of different dimensions | `Err("point i has dimension ..., but point 0 has dimension ...")` |
+//! | a `NaN` or infinite coordinate | `Err("point i has the non-finite coordinate ...")` |
+//! | a zero vector | `Err("point i is the zero vector ...")` |
+//! | points that are not unit vectors | normalized, with one warning on stderr |
+//!
+//! A query is a `&[f64]` of the same dimension, normalized if needed. A query of
+//! another dimension, with a non-finite coordinate, or equal to zero panics.
 //!
 //! # Typical use
 //!
-//! ```no_run
-//! use ann_rust::tensor_data_structures::tensor_close_top1::{Config, TensorCloseTop1};
-//! use ann_rust::dp::truncated_laplace::TruncatedLaplace;
+//! ```
+//! use ann_rust::anns::TensorCloseTop1;
+//! use ann_rust::annc::dp::TruncatedLaplace;
+//! use ann_rust::annc::TensorCloseTop1Counter;
+//! use ann_rust::utils::generate_unit_sphere_vectors;
+//! use ann_rust::Config;
 //!
-//! # fn main() -> Result<(), String> {
-//! let points: Vec<Vec<f64>> = vec![/* unit vectors */];
+//! let points = generate_unit_sphere_vectors(1_000, 32, 1);
+//! let query = points[0].clone();
 //! let config = Config { alpha: 0.7, beta: 0.4, ..Config::default() };
 //!
 //! // (alpha, beta)-ANN, Algorithm 5.
-//! let structure = TensorCloseTop1::build(points, &config)?;
-//! let answer = structure.query(&[/* query */]);
+//! let index = TensorCloseTop1::build(points, &config)?;
+//! let answer = index.query(&query);
+//!
+//! // (alpha, beta)-ANNC, Algorithm 3: the same partition, counters instead of points.
+//! let counter = TensorCloseTop1Counter::from(index);
+//! let exact = counter.count(&query).count;
 //!
 //! // (alpha, beta)-ANNC under (epsilon, delta)-DP, Theorem 13.
 //! let mechanism = TruncatedLaplace::new(1.0, 1e-6, 1.0)?;
-//! let released = structure.into_private(mechanism, 42);
-//! let estimate = released.query(&[/* query */]).estimate;
-//! # Ok(())
-//! # }
+//! let released = counter.into_private(mechanism, 42);
+//! let estimate = released.query(&query).estimate;
+//! # let _ = (answer, exact, estimate);
+//! # Ok::<(), String>(())
 //! ```
+//!
+//! # Crate layout
+//!
+//! * [`anns`] — the four search structures.
+//! * [`annc`] — their counting versions, and [`annc::dp`] the private ones.
+//! * [`lsf`] — the filters, partition and bucket index the twelve share.
+//! * [`data`] — synthetic data sets with planted neighbours, brute force ground truth.
+//! * [`utils`] — inner products, thresholds, seeded sampling.
 //!
 //! # Conventions
 //!
@@ -46,21 +83,18 @@
 //!   master seed through [`utils::derive_seed`], so a run is reproducible and
 //!   independent of the number of threads.
 
-pub mod cli;
+pub mod annc;
+pub mod anns;
 pub mod data;
+pub mod lsf;
 pub mod utils;
 
-pub mod dp {
-    //! Differentially private mechanisms used to release bucket counters.
-    pub mod truncated_laplace;
-}
+pub use lsf::{Config, Parameters};
 
-pub mod tensor_data_structures {
-    //! Tensorized structures: `t` factors of `m_sub` filters simulate `m_sub^t`
-    //! buckets, which keeps the space linear and the pre-processing `n^{1+o(1)}`.
-    pub mod bucket_index;
-    pub mod close_top1;
-    pub mod dp_annc;
-    pub mod probe;
-    pub mod tensor_close_top1;
-}
+#[cfg(test)]
+mod test_support;
+
+/// Compiles and runs the Rust example of the top-level README.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;

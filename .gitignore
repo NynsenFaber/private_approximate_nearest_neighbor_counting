@@ -2,3 +2,6 @@
 # Project exclude paths
 /target/
 /data/
+blog-implementing-tensorclosetop1.md
+blog-assets/
+documents/
