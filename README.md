@@ -1,7 +1,7 @@
 # Approximate Near Neighbour Counting with Differential Privacy
 
-[![CI](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/ci.yml/badge.svg)](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/ci.yml)
-[![Clippy](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/clippy.yml/badge.svg)](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/clippy.yml)
+[![CI](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/ci.yml)
+[![Clippy](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/clippy.yml/badge.svg?branch=master)](https://github.com/NynsenFaber/private_approximate_nearest_neighbor_counting/actions/workflows/clippy.yml)
 [![codecov](https://codecov.io/gh/NynsenFaber/private_approximate_nearest_neighbor_counting/branch/master/graph/badge.svg)](https://codecov.io/gh/NynsenFaber/private_approximate_nearest_neighbor_counting)
 
 A Rust implementation of the data structures in
