@@ -99,8 +99,30 @@ jobs:
 
       # Unit, integration and binary tests, in release like the `test` job. Doc
       # tests need a nightly toolchain to be instrumented, so they are left out.
-      - name: Measure coverage
-        run: cargo llvm-cov --release --all-targets --lcov --output-path lcov.info
+      - name: Tests
+        run: cargo llvm-cov --no-report --release --all-targets
+
+      # The experiment binaries have no unit tests of their own: run each one at a
+      # tiny size, with every algorithm and the main options, so they count too.
+      - name: Experiments
+        run: |
+          run() { cargo llvm-cov run --no-report --release --bin "$@"; }
+          run ann_experiment -- --help
+          run dp_annc_experiment -- --help
+          run generate_data -- --help
+          for algorithm in tensor-close-top1 tensor-top1 close-top1 top1; do
+            run ann_experiment -- --algorithm $algorithm --n 2000 --d 32 --trials 20 \
+              --m-sub 256 --seed 1
+            run dp_annc_experiment -- --algorithm $algorithm --n 2000 --d 32 --queries 5 \
+              --neighbours 200 --epsilons 1,8 --repeat 2 --m-sub 256 --seed 1
+          done
+          run ann_experiment -- --n 2000 --d 32 --trials 20 --strict --repeat 2 --seed 1
+          run generate_data -- --n 2000 --d 32 --queries 5 --out data/coverage.bin
+          run ann_experiment -- --data data/coverage.bin --no-linear
+          run dp_annc_experiment -- --data data/coverage.bin --epsilons 1 --repeat 1
+
+      - name: Coverage report
+        run: cargo llvm-cov report --release --lcov --output-path lcov.info
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5

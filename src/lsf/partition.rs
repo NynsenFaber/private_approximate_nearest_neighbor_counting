@@ -107,3 +107,17 @@ impl Partition {
         candidate_filters(self.filters.iter(), query)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lsf::algorithms;
+
+    /// Called directly, without the checks of the public structures, the
+    /// construction still refuses points of different dimensions.
+    #[test]
+    fn test_mismatched_dimensions_are_rejected() {
+        let data = vec![vec![1.0, 0.0], vec![1.0]];
+        assert!(Partition::build::<algorithms::Top1>(&data, &Config::default()).is_err());
+    }
+}

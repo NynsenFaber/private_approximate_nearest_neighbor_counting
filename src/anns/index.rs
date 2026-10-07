@@ -312,6 +312,23 @@ mod tests {
     }
 
     #[test]
+    fn test_memory_footprint_arithmetic() {
+        let memory = MemoryFootprint {
+            data_bytes: 1000,
+            filters_bytes: 50,
+            bucket_index_bytes: 150,
+        };
+        assert_eq!(memory.total(), 1200);
+        assert_eq!(memory.overhead_bytes(), 200);
+        assert!((memory.overhead_ratio() - 0.2).abs() < 1e-12);
+        assert_eq!(
+            memory.summary(),
+            "1.17 KiB total = 1000 B raw data + 200 B overhead (50 B filters, 150 B bucket \
+             index), 20.0% over the raw data a linear scan would need"
+        );
+    }
+
+    #[test]
     fn test_mismatched_dimensions_are_rejected() {
         let data = vec![vec![1.0, 0.0], vec![1.0]];
         let config = Config::default();

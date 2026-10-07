@@ -277,6 +277,42 @@ mod tests {
         assert!(Parameters::resolve::<A>(&config(0.5, 0.7), 100, 8).is_err());
         assert!(Parameters::resolve::<A>(&config(1.0, 0.5), 100, 8).is_err());
         assert!(Parameters::resolve::<A>(&config(0.5, 0.0), 100, 8).is_ok());
+        let bad_theta = Config {
+            theta: Some(-1.0),
+            ..config(0.9, 0.5)
+        };
+        assert!(Parameters::resolve::<A>(&bad_theta, 100, 8).is_err());
+        let zero_t = Config {
+            t: Some(0),
+            ..config(0.9, 0.5)
+        };
+        assert!(Parameters::resolve::<A>(&zero_t, 100, 8).is_err());
+    }
+
+    /// The derived quantities follow their formulas, and the summary names the
+    /// rule-specific settings.
+    #[test]
+    fn test_derived_quantities_and_summary() {
+        let fixed = Config {
+            t: Some(3),
+            m_sub: Some(100),
+            ..config(0.9, 0.5)
+        };
+        let close = Parameters::resolve::<algorithms::TensorCloseTop1>(&fixed, 1_000, 8).unwrap();
+        assert_eq!(close.stored_filters(), 300);
+        assert_eq!(close.total_buckets(), 1e6);
+        let per_factor = 100. * normal_sf(close.eta);
+        assert!((close.expected_filters_per_factor() - per_factor).abs() < 1e-12);
+        assert!((close.expected_probes() - per_factor.powi(3)).abs() < 1e-9);
+        let summary = close.summary();
+        assert!(summary.starts_with("algorithm = TensorCloseTop1\n"));
+        assert!(summary.contains("collision band"));
+        assert!(summary.contains("fallback to argmax = true"));
+
+        let top1 = Parameters::resolve::<algorithms::TensorTop1>(&fixed, 1_000, 8).unwrap();
+        let summary = top1.summary();
+        assert!(!summary.contains("collision band"));
+        assert!(summary.contains("argmax filter (Top-1)"));
     }
 
     /// A tiny `m_sub` is raised to the smallest value with a non-empty band.

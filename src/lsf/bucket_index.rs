@@ -217,6 +217,8 @@ mod tests {
         let keys = vec![vec![1u32, 2], vec![0, 5], vec![1, 0]];
         let index = index_of(&keys);
         assert_eq!(index.len(), 3);
+        assert!(!index.is_empty());
+        assert!(index_of(&[]).is_empty());
         assert!(index.get(&[0, 5]).is_some());
         assert!(index.get(&[2, 2]).is_none());
         // The iteration order is lexicographic.

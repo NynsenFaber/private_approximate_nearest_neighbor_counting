@@ -163,6 +163,8 @@ mod tests {
         assert!(TruncatedLaplace::new(0.0, 1e-6, 1.0).is_err());
         assert!(TruncatedLaplace::new(-1.0, 1e-6, 1.0).is_err());
         assert!(TruncatedLaplace::new(1.0, 1e-6, 0.0).is_err());
+        // e^1000 overflows, so the support bound would be infinite.
+        assert!(TruncatedLaplace::new(1000.0, 1e-6, 1.0).is_err());
     }
 
     /// Samples stay inside the support and are centred, with roughly Laplace spread.

@@ -156,6 +156,22 @@ mod tests {
     }
 
     #[test]
+    fn test_lists_and_strings() {
+        let parsed = args(
+            &["--epsilons", "1,x", "--data", "a.bin"],
+            &["epsilons", "data"],
+        )
+        .unwrap();
+        assert!(parsed.get_list::<f64>("epsilons", vec![]).is_err());
+        assert_eq!(
+            parsed.get_list::<f64>("missing", vec![2.0]).unwrap(),
+            vec![2.0]
+        );
+        assert_eq!(parsed.get_string("data"), Some("a.bin"));
+        assert_eq!(parsed.get_string("missing"), None);
+    }
+
+    #[test]
     fn test_optional() {
         let parsed = args(&["--t", "5"], &["t", "m-sub"]).unwrap();
         assert_eq!(parsed.get_optional::<usize>("t").unwrap(), Some(5));

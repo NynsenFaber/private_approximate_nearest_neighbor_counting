@@ -135,6 +135,8 @@ pub(crate) fn assert_dp_contract<A: Algorithm>() {
     let private = counter.release(mechanism, 202);
     let noisy = private.query(&query);
     assert_eq!(noisy.probed_buckets, exact.probed_buckets);
+    assert_eq!(private.params().algorithm, A::NAME);
+    assert_eq!(private.mechanism().epsilon, 1.0);
 
     // Suppressed buckets lose their whole (small) count, released ones are off by
     // at most A: both are covered by 1 + 2A per non-empty bucket of the product.

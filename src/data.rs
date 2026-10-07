@@ -276,6 +276,49 @@ mod tests {
         assert!(generate(&GeneratorConfig { n: 10, ..config }).is_err());
     }
 
+    /// A data set survives a save/load round trip unchanged, and a missing file is
+    /// an error.
+    #[test]
+    fn test_save_and_load() {
+        let config = GeneratorConfig {
+            n: 50,
+            d: 8,
+            queries: 2,
+            plant: PlantConfig {
+                count: 3,
+                similarity: 0.9,
+                tightness: 0.0,
+            },
+            seed: 4,
+        };
+        let dataset = generate(&config).unwrap();
+        let path = std::env::temp_dir().join(format!("ann_rust_test_{}.bin", std::process::id()));
+        let path = path.to_str().unwrap();
+        save(path, &dataset).unwrap();
+        let loaded = load(path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(loaded.points, dataset.points);
+        assert_eq!(loaded.queries, dataset.queries);
+        assert!(load(path).is_err());
+
+        let bad = GeneratorConfig {
+            plant: PlantConfig {
+                similarity: 1.0,
+                ..config.plant
+            },
+            ..config
+        };
+        assert!(generate(&bad).is_err());
+    }
+
+    /// The baseline returns the first point at inner product >= beta, in order.
+    #[test]
+    fn test_linear_search_first() {
+        let points = vec![vec![0.0, 1.0], vec![0.6, 0.8], vec![1.0, 0.0]];
+        assert_eq!(linear_search_first(&points, &[1.0, 0.0], 0.5), Some(1));
+        assert_eq!(linear_search_first(&points, &[-1.0, 0.0], 0.5), None);
+    }
+
     /// The planted points must be spread through the data set, not parked at the
     /// end: a baseline that scans in storage order would otherwise be timed against
     /// a worst case layout rather than a representative one.
